@@ -127,7 +127,8 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 <div class="progress-bar-container" title="<?php echo number_format($model_progress, 1); ?>% ukończonych galerii">
                     <div class="progress-bar" style="width:<?php echo number_format($model_progress, 1); ?>%;"><?php echo number_format($model_progress, 0); ?>%</div>
                 </div>
-                <button class="btn-action" onclick="prioritizeItem('scan_model', '<?php echo htmlspecialchars($model_name, ENT_QUOTES); ?>')" title="Uzupełnij lub rozpocznij przetwarzanie tej modelki">Uzupełnij Model</button>
+                <button class="btn-action" onclick="prioritizeItem('scan_model', '<?php echo htmlspecialchars($model_name, ENT_QUOTES); ?>')" title="Skanuj, aktualizuj i dodaj brakujące galerie do kolejki pobierania">Uzupełnij Model</button>
+                <button class="btn-action" onclick="prioritizeItem('scan_model_refresh_only', '<?php echo htmlspecialchars($model_name, ENT_QUOTES); ?>')" title="Tylko skanuj i aktualizuj opisy/liczniki (bez dodawania do kolejki pobierania)">Odśwież Opisy</button>
             </div>
             <ul class="nested">
                 <?php
@@ -149,7 +150,6 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                         if ($expected !== null && $expected > 0) {
                             $gallery_progress = ($downloaded / $expected * 100);
                         } elseif (($gallery_info['completed'] ?? false) && ($expected === 0 || $expected === null) && $downloaded === 0) {
-                             // Dla galerii pustych (0/0), ale oznaczonych jako completed
                             $gallery_progress = 100;
                         } elseif (($gallery_info['completed'] ?? false)) {
                             $gallery_progress = 100;
@@ -204,7 +204,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
     let activeModelNameSanitizedForUI = null;
     let aggregateRefreshTimeout = null;
 
-    function pySanitizeForQuerySelector(name) { /* ... jak w oryginalnym pliku ... */
+    function pySanitizeForQuerySelector(name) {
         if (typeof name !== 'string') name = String(name);
         let sanitized = name.trim();
         sanitized = sanitized.replace(/[<>:"\/\\|?*\x00-\x1F\t\n\r\f\v]/g, '_');
@@ -221,15 +221,13 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         return sanitized ? sanitized : "_fallback_sanitized_name_";
     }
 
-    // === DODANO IMPLEMENTACJĘ showToast ===
     function showToast(message, isError = false) {
         toastDiv.textContent = message;
         toastDiv.style.backgroundColor = isError ? '#dc3545' : '#333';
         toastDiv.classList.add('show');
-        setTimeout(() => { toastDiv.classList.remove('show'); }, 3500); // Wydłużono czas
+        setTimeout(() => { toastDiv.classList.remove('show'); }, 3500);
     }
 
-    // === DODANO IMPLEMENTACJĘ prioritizeItem ===
     function prioritizeItem(type, id) {
         console.log(`Wysłano żądanie priorytetu: typ=${type}, id=${id}`);
         showToast(`Wysyłanie żądania priorytetu dla ${type}: ${id}...`);
@@ -237,9 +235,9 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         fetch(`${API_URL}?action=prioritize&type=${type}&id=${encodeURIComponent(id)}&_=${new Date().getTime()}`)
             .then(response => {
                 if (!response.ok) {
-                    return response.json().then(errData => { // Spróbuj odczytać JSON błędu
+                    return response.json().then(errData => {
                         throw new Error(`Błąd HTTP ${response.status}: ${errData.message || response.statusText}`);
-                    }).catch(() => { // Jeśli błąd nie jest JSONem
+                    }).catch(() => {
                         throw new Error(`Błąd HTTP ${response.status}: ${response.statusText}`);
                     });
                 }
@@ -249,7 +247,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 console.log("Odpowiedź API (prioritize):", data);
                 if (data.success) {
                     showToast(`${data.message || 'Dodano do kolejki priorytetowej.'}`);
-                    fetchAndDisplayQueue(); // Odśwież listę kolejki
+                    fetchAndDisplayQueue();
                 } else {
                     showToast(`Błąd: ${data.message || 'Nie udało się dodać do kolejki.'}`, true);
                 }
@@ -278,8 +276,6 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 statusSpan.textContent = '';
                 if (data.success) {
                     modelNameInput.value = '';
-                    // Można dodać odświeżenie listy modeli, ale to wymagałoby przeładowania lub dynamicznego dodania
-                    // Na razie tylko komunikat.
                 }
             })
             .catch(error => {
@@ -289,7 +285,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
             });
     }
 
-    function updateGalleryUI(galleryId, downloaded, expected, scanSessionFound) { /* ... jak w oryginalnym pliku ... */
+    function updateGalleryUI(galleryId, downloaded, expected, scanSessionFound) {
         console.log(`updateGalleryUI CALLED for ${galleryId}: downloaded=${downloaded} (type: ${typeof downloaded}), expected=${expected} (type: ${typeof expected}), scanSessionFound=${scanSessionFound}`);
         const galleryLi = document.getElementById('gallery_li_' + galleryId);
         if (!galleryLi) { console.warn("updateGalleryUI: Nie znaleziono LI dla galerii", galleryId); return; }
@@ -339,7 +335,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         progressContainer.title = `Pobrano: ${currentDownloadedVal}/${expectedText} (${progressPercent.toFixed(1)}%)`;
     }
 
-    function updateStatus() { /* ... jak w oryginalnym pliku ... */
+    function updateStatus() {
         const statusDiv = document.getElementById('current-status');
         fetch(`${API_URL}?action=get_status&_=${new Date().getTime()}`)
             .then(response => {
@@ -406,7 +402,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
             .catch(error => { console.error("Błąd odświeżania statusu:", error); statusDiv.textContent = 'Błąd odświeżania statusu: ' + error.message; statusDiv.style.backgroundColor = '#ffdddd'; });
     }
 
-    function triggerDelayedAggregateRefresh(delay = 2000) { /* ... jak w oryginalnym pliku ... */
+    function triggerDelayedAggregateRefresh(delay = 2000) {
         if (aggregateRefreshTimeout) clearTimeout(aggregateRefreshTimeout);
         console.log(`Planuję odświeżenie agregatu za ${delay}ms.`);
         aggregateRefreshTimeout = setTimeout(() => {
@@ -415,7 +411,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         }, delay);
     }
 
-    function fetchAggregateDataAndUpdateModels() { /* ... jak w oryginalnym pliku ... */
+    function fetchAggregateDataAndUpdateModels() {
         fetch(`${API_URL}?action=get_aggregate&_=${new Date().getTime()}`)
             .then(response => {
                 if (!response.ok) throw new Error('HTTP error! status: ' + response.status);
@@ -445,9 +441,16 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                                     if(galleryLi && nestedUl && nestedUl.classList.contains('active')){
                                         const gData = galleriesFromServer[galleryId];
                                         updateGalleryUI(galleryId, gData.downloaded, gData.expected, null);
+                                         // === AKTUALIZACJA TYTUŁU ===
+                                        const linkA = galleryLi.querySelector('.gallery-link a');
+                                        if (linkA && linkA.textContent !== gData.title) {
+                                            linkA.textContent = gData.title;
+                                            console.log(`Zaktualizowano tytuł dla ${galleryId} na "${gData.title}"`);
+                                        }
+                                        // ============================
                                     }
                                 }
-                                
+
                                 if (!modelLiElement.classList.contains('model-processing')) {
                                     let appliedClass = "";
                                     if (totalInModel > 0 && completedInModel === totalInModel) appliedClass = "model-complete";
@@ -502,13 +505,12 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         setInterval(fetchAggregateDataAndUpdateModels, 15000);
     });
 
-    // --- Funkcje do zarządzania kolejką (zakładam, że są obecne i poprawne) ---
     let draggedItem = null;
-    let queueDataCache = []; // Cache dla danych kolejki
+    let queueDataCache = [];
 
     function getQueueItemDisplay(item) {
         let display = `Typ: ${item.type}`;
-        if (item.type === 'scan_model' && typeof item.data === 'string') {
+        if ((item.type === 'scan_model' || item.type === 'scan_model_refresh_only') && typeof item.data === 'string') {
             display += ` | Model: ${item.data}`;
         } else if (item.type === 'gallery' && typeof item.data === 'object' && item.data !== null) {
             display += ` | Galeria: ${item.data.title || item.data.id} (Model: ${item.data.model_name || '?'})`;
@@ -519,7 +521,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
     }
 
     function populateQueueList(queue) {
-        queueDataCache = queue; // Zapisz do cache
+        queueDataCache = queue;
         const list = document.getElementById('priority-queue-list');
         list.innerHTML = '';
         if (queue.length === 0) {
@@ -529,7 +531,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 const li = document.createElement('li');
                 li.className = 'queue-item';
                 li.draggable = true;
-                li.dataset.index = index; // Użyj indexu do identyfikacji
+                li.dataset.index = index;
 
                 li.addEventListener('dragstart', handleDragStart);
                 li.addEventListener('dragover', handleDragOver);
@@ -552,8 +554,8 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 const removeBtn = document.createElement('button');
                 removeBtn.textContent = 'Usuń';
                 removeBtn.onclick = () => {
-                    queueDataCache.splice(index, 1); // Usuń z cache
-                    populateQueueList(queueDataCache); // Odśwież widok
+                    queueDataCache.splice(index, 1);
+                    populateQueueList(queueDataCache);
                     updateQueueCount();
                 };
                 controls.appendChild(removeBtn);
@@ -649,7 +651,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 showToast(`Błąd zapisu kolejki: ${data.message}`, true);
             }
             setTimeout(() => { statusSpan.textContent = ''; }, 3000);
-            updateQueueCount(); // Zaktualizuj licznik na głównym przycisku
+            updateQueueCount();
         })
         .catch(error => {
             console.error('Błąd zapisu kolejki:', error);
