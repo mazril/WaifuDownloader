@@ -28,7 +28,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         .toggle { cursor: pointer; margin-right: 8px; font-weight: bold; user-select: none; width: 15px; display: inline-block; text-align: center; color: #333; }
         .model-li { margin-bottom: 8px; background-color: #fff; border: 1px solid #ddd; padding: 0; border-radius: 5px; box-shadow: 0 1px 2px rgba(0, 0, 0, .05); overflow: hidden; }
         .model-header { display: flex; align-items: center; padding: 8px 12px; background-color: #e9ecef; border-bottom: 1px solid #ddd; transition: background-color 0.3s; }
-        .model-li.model-partial > .model-header { background-color: #FFE0B2; } 
+        .model-li.model-partial > .model-header { background-color: #FFE0B2; }
         .model-li.model-complete > .model-header { background-color: #A5D6A7; }
         .model-li.model-processing > .model-header { background-color: #ADD8E6; }
         .model-header .toggle { margin-right: 8px; }
@@ -112,7 +112,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 }
             }
             $model_progress = ($total_galleries > 0) ? ($completed_galleries / $total_galleries * 100) : 0;
-            
+
             $model_li_class = "model-li";
             if ($total_galleries > 0 && $completed_galleries === $total_galleries) {
                 $model_li_class .= " model-complete";
@@ -199,12 +199,12 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
 <script>
     const API_URL = '<?php echo API_URL; ?>';
     const toastDiv = document.getElementById('toast');
-    
-    let activeGalleryIdForUI = null; 
+
+    let activeGalleryIdForUI = null;
     let activeModelNameSanitizedForUI = null;
     let aggregateRefreshTimeout = null;
 
-    function pySanitizeForQuerySelector(name) {
+    function pySanitizeForQuerySelector(name) { /* ... jak w oryginalnym pliku ... */
         if (typeof name !== 'string') name = String(name);
         let sanitized = name.trim();
         sanitized = sanitized.replace(/[<>:"\/\\|?*\x00-\x1F\t\n\r\f\v]/g, '_');
@@ -217,81 +217,129 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         sanitized = sanitized.replace(/^[\s._-]+|[\s._-]+$/g, '');
         if (sanitized.length > 150) sanitized = sanitized.substring(0, 150);
         sanitized = sanitized.replace(/^[\s._-]+|[\s._-]+$/g, '');
-        sanitized = sanitized.replace(/\s+/g, '_');
+        sanitized = sanitized.replace(/\s+/g, '_'); // Zamiana spacji na _ dla pewności
         return sanitized ? sanitized : "_fallback_sanitized_name_";
     }
 
-    function showToast(message, isError = false) { /* ... bez zmian ... */ }
-    function prioritizeItem(type, id) { /* ... bez zmian ... */ }
-    function addModelToList() { /* ... bez zmian ... */ }
-    
-    function updateGalleryUI(galleryId, downloaded, expected, scanSessionFound) {
-        // === DODANO LOGOWANIE PARAMETRÓW ===
-        console.log(`updateGalleryUI CALLED for ${galleryId}: downloaded=${downloaded} (type: ${typeof downloaded}), expected=${expected} (type: ${typeof expected}), scanSessionFound=${scanSessionFound}`);
-        // =====================================
+    // === DODANO IMPLEMENTACJĘ showToast ===
+    function showToast(message, isError = false) {
+        toastDiv.textContent = message;
+        toastDiv.style.backgroundColor = isError ? '#dc3545' : '#333';
+        toastDiv.classList.add('show');
+        setTimeout(() => { toastDiv.classList.remove('show'); }, 3500); // Wydłużono czas
+    }
 
+    // === DODANO IMPLEMENTACJĘ prioritizeItem ===
+    function prioritizeItem(type, id) {
+        console.log(`Wysłano żądanie priorytetu: typ=${type}, id=${id}`);
+        showToast(`Wysyłanie żądania priorytetu dla ${type}: ${id}...`);
+
+        fetch(`${API_URL}?action=prioritize&type=${type}&id=${encodeURIComponent(id)}&_=${new Date().getTime()}`)
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(errData => { // Spróbuj odczytać JSON błędu
+                        throw new Error(`Błąd HTTP ${response.status}: ${errData.message || response.statusText}`);
+                    }).catch(() => { // Jeśli błąd nie jest JSONem
+                        throw new Error(`Błąd HTTP ${response.status}: ${response.statusText}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Odpowiedź API (prioritize):", data);
+                if (data.success) {
+                    showToast(`${data.message || 'Dodano do kolejki priorytetowej.'}`);
+                    fetchAndDisplayQueue(); // Odśwież listę kolejki
+                } else {
+                    showToast(`Błąd: ${data.message || 'Nie udało się dodać do kolejki.'}`, true);
+                }
+            })
+            .catch(error => {
+                console.error('Błąd funkcji prioritizeItem:', error);
+                showToast(`Błąd sieciowy lub serwera: ${error.message}`, true);
+            });
+    }
+
+    function addModelToList() {
+        const modelNameInput = document.getElementById('new-model-name');
+        const statusSpan = document.getElementById('add-model-status');
+        const modelName = modelNameInput.value.trim();
+
+        if (!modelName) {
+            showToast('Wpisz nazwę modelki.', true);
+            return;
+        }
+
+        statusSpan.textContent = 'Dodawanie...';
+        fetch(`${API_URL}?action=add_model&model_name=${encodeURIComponent(modelName)}&_=${new Date().getTime()}`)
+            .then(response => response.json())
+            .then(data => {
+                showToast(data.message, !data.success);
+                statusSpan.textContent = '';
+                if (data.success) {
+                    modelNameInput.value = '';
+                    // Można dodać odświeżenie listy modeli, ale to wymagałoby przeładowania lub dynamicznego dodania
+                    // Na razie tylko komunikat.
+                }
+            })
+            .catch(error => {
+                console.error("Błąd dodawania modelki:", error);
+                showToast('Błąd sieciowy podczas dodawania modelki.', true);
+                statusSpan.textContent = '';
+            });
+    }
+
+    function updateGalleryUI(galleryId, downloaded, expected, scanSessionFound) { /* ... jak w oryginalnym pliku ... */
+        console.log(`updateGalleryUI CALLED for ${galleryId}: downloaded=${downloaded} (type: ${typeof downloaded}), expected=${expected} (type: ${typeof expected}), scanSessionFound=${scanSessionFound}`);
         const galleryLi = document.getElementById('gallery_li_' + galleryId);
         if (!galleryLi) { console.warn("updateGalleryUI: Nie znaleziono LI dla galerii", galleryId); return; }
-        
         const statusSpan = document.getElementById('status_' + galleryId);
         const progressBar = document.getElementById('progress_bar_' + galleryId);
         const progressContainer = document.getElementById('progress_container_' + galleryId);
         const newlyFoundSpan = document.getElementById('newly_found_' + galleryId);
-
         if (!statusSpan || !progressBar || !progressContainer || !newlyFoundSpan) {
-            console.warn("updateGalleryUI: Brak jednego z elementów UI dla galerii", galleryId);
-            return;
+            console.warn("updateGalleryUI: Brak jednego z elementów UI dla galerii", galleryId); return;
         }
-
         const expectedValFromParam = (expected !== null && expected !== undefined) ? expected : galleryLi.dataset.expected;
         const expectedText = (expectedValFromParam === '?' || expectedValFromParam === null || expectedValFromParam === undefined || isNaN(parseInt(expectedValFromParam,10))) ? '?' : parseInt(expectedValFromParam, 10);
-        
-        // Używaj wartości z parametru 'downloaded', jeśli jest dostępna i jest liczbą.
-        // W przeciwnym razie spróbuj z dataset, ale upewnij się, że to liczba.
         let currentDownloadedVal;
         if (downloaded !== null && downloaded !== undefined && !isNaN(parseInt(downloaded, 10))) {
             currentDownloadedVal = parseInt(downloaded, 10);
         } else {
             currentDownloadedVal = parseInt(galleryLi.dataset.downloaded, 10);
-            if (isNaN(currentDownloadedVal)) currentDownloadedVal = 0; // Fallback na 0, jeśli dataset też jest zły
+            if (isNaN(currentDownloadedVal)) currentDownloadedVal = 0;
         }
-        galleryLi.dataset.downloaded = currentDownloadedVal; // Zawsze aktualizuj dataset poprawną liczbą
-
+        galleryLi.dataset.downloaded = currentDownloadedVal;
         if (scanSessionFound !== null && scanSessionFound !== undefined && scanSessionFound > 0) {
             newlyFoundSpan.textContent = 'Nowych: ' + scanSessionFound;
             newlyFoundSpan.style.display = 'inline';
         } else {
             newlyFoundSpan.style.display = 'none';
         }
-
         let statusText = 'D: ' + currentDownloadedVal + '/' + expectedText;
         let progress = 0;
         let color = 'red';
-
         if (expectedText !== '?') {
-            const numExpected = parseInt(expectedText, 10); // expectedText jest już liczbą lub '?'
+            const numExpected = parseInt(expectedText, 10);
             if (numExpected > 0) {
                  progress = (currentDownloadedVal / numExpected * 100);
             } else if (numExpected === 0 && currentDownloadedVal === 0) {
-                progress = 100; // Pusta, ale kompletna
+                progress = 100;
             }
-             // Kolor na podstawie progresu lub jeśli galeria pusta ale kompletna
             color = (progress >= 100 || (numExpected === 0 && currentDownloadedVal === 0)) ? 'green' : (currentDownloadedVal > 0 ? 'orange' : 'red');
-        } else { // expectedText jest '?'
+        } else {
             color = currentDownloadedVal > 0 ? 'orange' : 'red';
         }
-        
         statusSpan.textContent = statusText;
         statusSpan.className = 'gallery-status ' + color;
-
-        const progressPercent = Math.min(100, Math.max(0, progress)); // Upewnij się, że progres jest w zakresie 0-100
+        const progressPercent = Math.min(100, Math.max(0, progress));
         progressBar.style.width = progressPercent.toFixed(1) + '%';
         progressBar.textContent = progressPercent.toFixed(0) + '%';
         progressBar.className = 'progress-bar ' + color;
         progressContainer.title = `Pobrano: ${currentDownloadedVal}/${expectedText} (${progressPercent.toFixed(1)}%)`;
     }
 
-    function updateStatus() {
+    function updateStatus() { /* ... jak w oryginalnym pliku ... */
         const statusDiv = document.getElementById('current-status');
         fetch(`${API_URL}?action=get_status&_=${new Date().getTime()}`)
             .then(response => {
@@ -304,18 +352,14 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                    statusDiv.style.backgroundColor = '#fff8dc';
                    return;
                 }
-
                 statusDiv.textContent = '[' + data.timestamp + '] ' + data.message +
                                         (data.current_model ? ' | Model: ' + data.current_model : '') +
                                         (data.current_gallery_title ? ' | Galeria: ' + data.current_gallery_title : '');
                 statusDiv.style.backgroundColor = data.is_processing ? '#e0f7fa' : '#fff';
-
                 const galleryThatWasProcessing = activeGalleryIdForUI;
                 const modelSanitizedThatWasProcessing = activeModelNameSanitizedForUI;
-
                 const currentProcessingModelOriginal = data.current_model;
                 const currentProcessingModelSanitized = currentProcessingModelOriginal ? pySanitizeForQuerySelector(currentProcessingModelOriginal) : null;
-
                 if (modelSanitizedThatWasProcessing && modelSanitizedThatWasProcessing !== currentProcessingModelSanitized) {
                     const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
                     if (oldModelLi) oldModelLi.classList.remove('model-processing');
@@ -328,7 +372,6 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                     }
                 }
                 activeModelNameSanitizedForUI = currentProcessingModelSanitized;
-
                 if (data.is_processing && data.current_gallery_id) {
                     activeGalleryIdForUI = data.current_gallery_id;
                     if (galleryThatWasProcessing && galleryThatWasProcessing !== activeGalleryIdForUI) {
@@ -338,15 +381,12 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                     const currentGalleryLi = document.getElementById('gallery_li_' + activeGalleryIdForUI);
                     if (currentGalleryLi) currentGalleryLi.classList.add('processing');
                     updateGalleryUI(activeGalleryIdForUI, data.current_download_count, data.current_expected_count, data.scan_session_found_count);
-                
                 } else if (!data.is_processing && galleryThatWasProcessing) {
                     console.log(`Galeria ${galleryThatWasProcessing} zakończyła. Finalna aktualizacja UI z current_status.json.`);
                     const finishedGalleryLi = document.getElementById('gallery_li_' + galleryThatWasProcessing);
                     if (finishedGalleryLi) finishedGalleryLi.classList.remove('processing');
-                    
                     updateGalleryUI(galleryThatWasProcessing, data.current_download_count, data.current_expected_count, null);
-                    activeGalleryIdForUI = null; 
-                    
+                    activeGalleryIdForUI = null;
                     if(modelSanitizedThatWasProcessing && !currentProcessingModelSanitized){
                         const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
                         if (oldModelLi) oldModelLi.classList.remove('model-processing');
@@ -363,10 +403,10 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                      }
                 }
             })
-            .catch(error => { console.error("Błąd odświeżania statusu:", error); /* ... reszta bez zmian ... */ });
+            .catch(error => { console.error("Błąd odświeżania statusu:", error); statusDiv.textContent = 'Błąd odświeżania statusu: ' + error.message; statusDiv.style.backgroundColor = '#ffdddd'; });
     }
 
-    function triggerDelayedAggregateRefresh(delay = 2000) { /* Zmieniono domyślne opóźnienie na 2s */
+    function triggerDelayedAggregateRefresh(delay = 2000) { /* ... jak w oryginalnym pliku ... */
         if (aggregateRefreshTimeout) clearTimeout(aggregateRefreshTimeout);
         console.log(`Planuję odświeżenie agregatu za ${delay}ms.`);
         aggregateRefreshTimeout = setTimeout(() => {
@@ -375,7 +415,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         }, delay);
     }
 
-    function fetchAggregateDataAndUpdateModels() {
+    function fetchAggregateDataAndUpdateModels() { /* ... jak w oryginalnym pliku ... */
         fetch(`${API_URL}?action=get_aggregate&_=${new Date().getTime()}`)
             .then(response => {
                 if (!response.ok) throw new Error('HTTP error! status: ' + response.status);
@@ -401,32 +441,26 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                                         completedInModel++;
                                     }
                                     const galleryLi = document.getElementById('gallery_li_' + galleryId);
-                                    // Aktualizuj galerie tylko jeśli model jest rozwinięty, aby nie robić za dużo pracy
                                     const nestedUl = modelLiElement.querySelector('ul.nested');
                                     if(galleryLi && nestedUl && nestedUl.classList.contains('active')){
                                         const gData = galleriesFromServer[galleryId];
-                                        // Przekazuj explicite null dla scanSessionFound, bo nie jest tu relevantne
                                         updateGalleryUI(galleryId, gData.downloaded, gData.expected, null);
                                     }
                                 }
                                 
-                                // Aktualizacja klas CSS modelu (tylko jeśli nie jest aktualnie przetwarzany)
                                 if (!modelLiElement.classList.contains('model-processing')) {
                                     let appliedClass = "";
                                     if (totalInModel > 0 && completedInModel === totalInModel) appliedClass = "model-complete";
                                     else if (completedInModel > 0 && completedInModel < totalInModel) appliedClass = "model-partial";
-                                    
-                                    modelLiElement.classList.remove('model-complete', 'model-partial'); // Usuń stare
-                                    if(appliedClass) modelLiElement.classList.add(appliedClass); // Dodaj nową, jeśli jest
+                                    modelLiElement.classList.remove('model-complete', 'model-partial');
+                                    if(appliedClass) modelLiElement.classList.add(appliedClass);
                                 }
 
                                 const modelNameSpan = modelLiElement.querySelector('.model-header .model-name');
                                 const modelProgressBar = modelLiElement.querySelector('.model-header .progress-bar');
                                 const modelProgressContainer = modelLiElement.querySelector('.model-header .progress-bar-container');
-
                                 const newModelText = `${modelNameOriginal} (${completedInModel}/${totalInModel})`;
                                 if (modelNameSpan && modelNameSpan.textContent !== newModelText) modelNameSpan.textContent = newModelText;
-                                
                                 const modelProgressPercent = totalInModel > 0 ? (completedInModel / totalInModel * 100) : 0;
                                 if (modelProgressBar) {
                                     modelProgressBar.style.width = `${modelProgressPercent.toFixed(1)}%`;
@@ -438,7 +472,6 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                         }
                     }
                     if(anyChangeRequiringUIToggleUpdate) console.log("Podsumowania modeli zaktualizowane przez dane agregatu.");
-
                     const lastAggregateUpdateSpan = document.getElementById("last-aggregate-update-time");
                     if(lastAggregateUpdateSpan) {
                         const date = new Date();
@@ -451,7 +484,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
             })
             .catch(error => { console.error("Błąd odświeżania agregatu modeli:", error); });
     }
-        
+
     document.addEventListener('DOMContentLoaded', function() {
         document.querySelectorAll('.toggle').forEach(span => {
             span.addEventListener('click', function() {
@@ -459,28 +492,179 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 nestedUl.classList.toggle('active');
                 this.textContent = nestedUl.classList.contains('active') ? '−' : '+';
                 if (nestedUl.classList.contains('active')) {
-                    fetchAggregateDataAndUpdateModels(); 
+                    fetchAggregateDataAndUpdateModels();
                 }
             });
         });
-        updateStatus(); 
+        updateStatus();
         fetchAndDisplayQueue();
-        setInterval(updateStatus, 2800); 
-        setInterval(fetchAggregateDataAndUpdateModels, 15000); // Zmniejszone do 15 sekund
+        setInterval(updateStatus, 2800);
+        setInterval(fetchAggregateDataAndUpdateModels, 15000);
     });
 
-    function getQueueItemDisplay(item) { /* ... bez zmian ... */ }
-    function populateQueueList(queue) { /* ... bez zmian ... */ }
-    function updateQueueCount() { /* ... bez zmian ... */ }
-    function handleDragStart(e) { /* ... bez zmian ... */ }
-    function handleDragOver(e) { /* ... bez zmian ... */ }
-    function handleDrop(e) { /* ... bez zmian ... */ }
-    function handleDragEnd(e) { /* ... bez zmian ... */ }
-    function fetchAndDisplayQueue() { /* ... bez zmian ... */ }
-    function openQueueModal() { /* ... bez zmian ... */ }
-    function closeQueueModal() { /* ... bez zmian ... */ }
-    function saveQueueOrder() { /* ... bez zmian ... */ }
-    window.onclick = function(event) { /* ... bez zmian ... */ };
+    // --- Funkcje do zarządzania kolejką (zakładam, że są obecne i poprawne) ---
+    let draggedItem = null;
+    let queueDataCache = []; // Cache dla danych kolejki
+
+    function getQueueItemDisplay(item) {
+        let display = `Typ: ${item.type}`;
+        if (item.type === 'scan_model' && typeof item.data === 'string') {
+            display += ` | Model: ${item.data}`;
+        } else if (item.type === 'gallery' && typeof item.data === 'object' && item.data !== null) {
+            display += ` | Galeria: ${item.data.title || item.data.id} (Model: ${item.data.model_name || '?'})`;
+        } else {
+            display += ` | Dane: ${JSON.stringify(item.data).substring(0, 50)}...`;
+        }
+        return display;
+    }
+
+    function populateQueueList(queue) {
+        queueDataCache = queue; // Zapisz do cache
+        const list = document.getElementById('priority-queue-list');
+        list.innerHTML = '';
+        if (queue.length === 0) {
+            list.innerHTML = '<li>Kolejka jest pusta.</li>';
+        } else {
+            queue.forEach((item, index) => {
+                const li = document.createElement('li');
+                li.className = 'queue-item';
+                li.draggable = true;
+                li.dataset.index = index; // Użyj indexu do identyfikacji
+
+                li.addEventListener('dragstart', handleDragStart);
+                li.addEventListener('dragover', handleDragOver);
+                li.addEventListener('drop', handleDrop);
+                li.addEventListener('dragend', handleDragEnd);
+
+                const handle = document.createElement('span');
+                handle.className = 'drag-handle';
+                handle.textContent = '☰';
+                li.appendChild(handle);
+
+                const info = document.createElement('span');
+                info.className = 'queue-item-info';
+                info.textContent = getQueueItemDisplay(item);
+                li.appendChild(info);
+
+                const controls = document.createElement('div');
+                controls.className = 'queue-item-controls';
+
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = 'Usuń';
+                removeBtn.onclick = () => {
+                    queueDataCache.splice(index, 1); // Usuń z cache
+                    populateQueueList(queueDataCache); // Odśwież widok
+                    updateQueueCount();
+                };
+                controls.appendChild(removeBtn);
+
+                li.appendChild(controls);
+                list.appendChild(li);
+            });
+        }
+        updateQueueCount();
+    }
+
+    function updateQueueCount() {
+        document.getElementById('queue-count').textContent = queueDataCache.length;
+    }
+
+    function handleDragStart(e) {
+        draggedItem = e.target;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', e.target.dataset.index);
+        setTimeout(() => e.target.classList.add('dragging'), 0);
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        const target = e.target.closest('.queue-item');
+        if (target && target !== draggedItem) {
+            document.querySelectorAll('.queue-item').forEach(it => it.classList.remove('over'));
+            target.classList.add('over');
+        }
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        const target = e.target.closest('.queue-item');
+        if (target && target !== draggedItem) {
+            const fromIndex = parseInt(draggedItem.dataset.index, 10);
+            const toIndex = parseInt(target.dataset.index, 10);
+
+            const [movedItem] = queueDataCache.splice(fromIndex, 1);
+            queueDataCache.splice(toIndex, 0, movedItem);
+
+            populateQueueList(queueDataCache);
+        }
+        document.querySelectorAll('.queue-item').forEach(it => it.classList.remove('over'));
+    }
+
+    function handleDragEnd(e) {
+        e.target.classList.remove('dragging');
+    }
+
+    function fetchAndDisplayQueue() {
+        fetch(`${API_URL}?action=get_queue&_=${new Date().getTime()}`)
+            .then(response => response.json())
+            .then(data => {
+                populateQueueList(data || []);
+            })
+            .catch(error => {
+                console.error("Błąd pobierania kolejki:", error);
+                document.getElementById('priority-queue-list').innerHTML = '<li>Błąd ładowania kolejki.</li>';
+                updateQueueCount();
+            });
+    }
+
+    function openQueueModal() {
+        document.getElementById('queue-modal').style.display = 'block';
+        fetchAndDisplayQueue();
+    }
+
+    function closeQueueModal() {
+        document.getElementById('queue-modal').style.display = 'none';
+        document.getElementById('queue-status').textContent = '';
+    }
+
+    function saveQueueOrder() {
+        const statusSpan = document.getElementById('queue-status');
+        statusSpan.textContent = 'Zapisywanie...';
+        statusSpan.style.color = '#555';
+
+        fetch(`${API_URL}?action=update_queue`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(queueDataCache)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                statusSpan.textContent = 'Kolejka zapisana!';
+                statusSpan.style.color = 'green';
+                showToast('Kolejka priorytetowa została zaktualizowana.');
+            } else {
+                statusSpan.textContent = `Błąd: ${data.message}`;
+                statusSpan.style.color = 'red';
+                showToast(`Błąd zapisu kolejki: ${data.message}`, true);
+            }
+            setTimeout(() => { statusSpan.textContent = ''; }, 3000);
+            updateQueueCount(); // Zaktualizuj licznik na głównym przycisku
+        })
+        .catch(error => {
+            console.error('Błąd zapisu kolejki:', error);
+            statusSpan.textContent = 'Błąd sieciowy!';
+            statusSpan.style.color = 'red';
+            showToast('Błąd sieciowy podczas zapisu kolejki.', true);
+        });
+    }
+
+    window.onclick = function(event) {
+        const modal = document.getElementById('queue-modal');
+        if (event.target == modal) {
+            closeQueueModal();
+        }
+    };
 </script>
 
 </body>
