@@ -19,6 +19,7 @@ import main # Dla main.shutdown_requested
 logger = logging.getLogger(__name__)
 
 def _scan_new_model_page(driver, model_name_original):
+    """Skanuje stronę modelki, aby znaleźć linki do galerii, ich opisy i liczbę zdjęć."""
     logger.info(f"Rozpoczynam skanowanie strony dla modelki: {model_name_original}")
     sanitized_model_name_for_url = utils.sanitize_foldername(model_name_original).lower().replace('_', '-')
     model_url = f"{constants.BASE_URL_SITE}/model/{sanitized_model_name_for_url}"
@@ -27,7 +28,8 @@ def _scan_new_model_page(driver, model_name_original):
         driver_utils.safe_driver_get(driver, model_url)
         logger.info(f"Strona modelki '{model_name_original}' ({model_url}) załadowana.")
 
-        gallery_link_selector = 'a[style*="text-shadow"]'
+        # Używamy selektora, który celuje w linki z opisami (tytułami) galerii
+        gallery_link_selector = "a[href*='/gallery/'][class*='text-white']"
         logger.info(f"Rozpoczynam scrollowanie strony modelki '{model_name_original}' (selektor: '{gallery_link_selector}')...")
 
         link_elements = driver_utils.scroll_until_timeout(
@@ -38,62 +40,62 @@ def _scan_new_model_page(driver, model_name_original):
 
         scanned_galleries = []
         if not link_elements:
-            logger.warning(f"Nie znaleziono żadnych elementów galerii dla '{model_name_original}' używając '{gallery_link_selector}'.")
-            gallery_link_selector_alt = "div.grid-item a[href*='/gallery/']" 
-            logger.info(f"Próbuję alternatywnego selektora '{gallery_link_selector_alt}'...")
-            link_elements = driver_utils.scroll_until_timeout(
-                driver, gallery_link_selector_alt, expected_count=None, allow_up_scroll=True,
-                gallery_id=f"scan_{utils.sanitize_foldername(model_name_original)}_alt",
-                model_name=model_name_original, gallery_title="Skanowanie (alt)"
-            )
-            if not link_elements:
-                 logger.error(f"Nadal nie znaleziono galerii dla '{model_name_original}' po alternatywnym selektorze.")
-                 return []
+            logger.error(f"Nie znaleziono żadnych elementów galerii dla '{model_name_original}' używając '{gallery_link_selector}'. Sprawdź selektor lub stronę.")
+            return []
 
         logger.info(f"Znaleziono {len(link_elements)} potencjalnych linków/tytułów. Przetwarzam...")
         processed_urls = set()
+
         for idx, link_el in enumerate(link_elements):
             gallery_url = "Nieznany"
             try:
                 gallery_url = link_el.get_attribute('href')
-                if not gallery_url or '/gallery/' not in gallery_url: continue
-                if gallery_url in processed_urls: continue
+                if not gallery_url or '/gallery/' not in gallery_url:
+                    continue
+                if gallery_url in processed_urls:
+                    continue
                 processed_urls.add(gallery_url)
 
-                title = link_el.text.strip() if link_el.text else utils.get_gallery_id(gallery_url)
+                # Pobieramy tekst linku - to jest nasz pożądany opis
+                title = link_el.text.strip()
+                if not title: # Jeśli link nie ma tekstu, użyj ID jako fallback
+                    title = utils.get_gallery_id(gallery_url)
+
                 count = None
                 try:
-                    container_xpath_options = [
-                        "./ancestor::div[contains(@class, 'grid-item')]",
-                        "./ancestor::div[contains(@class, 'card-img-overlay')]",
-                        "./parent::div[contains(@class, 'position-absolute')]/parent::div" # Dla struktury z obrazka HTML
-                    ]
-                    grid_item_container = None
-                    for xpath_opt in container_xpath_options:
-                        try:
-                            grid_item_container = link_el.find_element(By.XPATH, xpath_opt)
-                            if grid_item_container: break
-                        except NoSuchElementException:
-                            continue
-                    
+                    # Szukamy nadrzędnego elementu 'grid-item', aby znaleźć licznik
+                    grid_item_container = link_el.find_element(By.XPATH, "./ancestor::div[contains(@class, 'grid-item')]")
                     if grid_item_container:
-                        # Bardziej precyzyjny selektor dla licznika, bazując na strukturze HTML
-                        count_span = grid_item_container.find_element(By.CSS_SELECTOR, "div.position-absolute.bottom-0.end-0 span.ms-1")
+                        # Szukamy spana z licznikiem wewnątrz 'grid-item'
+                        count_span = grid_item_container.find_element(By.CSS_SELECTOR, "span.ms-1")
                         count_text = count_span.text.strip()
-                        if count_text.isdigit(): count = int(count_text)
+                        if count_text.isdigit():
+                            count = int(count_text)
                         logger.debug(f"  Licznik dla '{title}': {count if count is not None else 'N/A'} (tekst: '{count_text}')")
-                    else: logger.debug(f"  Brak kontenera dla licznika '{title}'.")
+                    else:
+                        logger.debug(f"  Brak kontenera 'grid-item' dla '{title}'. Nie można pobrać licznika.")
                 except NoSuchElementException:
                     logger.debug(f"  Brak licznika (span.ms-1) dla '{title}' (NSE).")
-                except Exception as e: logger.warning(f"  Błąd ekstrakcji licznika dla '{title}': {e}", exc_info=False)
+                except Exception as e:
+                    logger.warning(f"  Błąd ekstrakcji licznika dla '{title}': {e}", exc_info=False)
 
                 scanned_galleries.append({'url': gallery_url, 'title': title, 'count': count})
-            except Exception as e: logger.warning(f"Błąd przetwarzania linku #{idx+1} ({gallery_url}): {e}", exc_info=False)
 
-        logger.info(f"Zakończono skanowanie dla '{model_name_original}'. Znaleziono {len(scanned_galleries)} galerii.")
+            except WebDriverException as wde:
+                 logger.warning(f"Błąd WebDrivera (może być StaleElementReference) przy linku #{idx+1}: {wde}. Próbuję ponownie znaleźć element.")
+                 # Można dodać logikę ponownego wyszukania, ale na razie pomijamy
+                 continue
+            except Exception as e:
+                logger.warning(f"Błąd przetwarzania linku #{idx+1} ({gallery_url}): {e}", exc_info=False)
+
+        logger.info(f"Zakończono skanowanie dla '{model_name_original}'. Znaleziono {len(scanned_galleries)} unikalnych galerii.")
         return scanned_galleries
-    except constants.RestartRequiredError: raise
-    except Exception as e: logger.exception(f"Błąd skanowania {model_name_original}: {e}"); return []
+
+    except constants.RestartRequiredError:
+        raise
+    except Exception as e:
+        logger.exception(f"Błąd skanowania {model_name_original}: {e}")
+        return []
 
 def _determine_descriptive_foldername_base(driver, gallery_url, original_gallery_title_from_list, model_name_original_for_ai=None):
     folder_base_name = ""
@@ -142,23 +144,25 @@ def process_single_gallery(driver, model_name_original, gallery_info_scraped):
     model_galleries_data = data_manager.load_model_galleries_data(model_name_sanitized)
 
     gallery_url = gallery_info_scraped['url']
-    title_from_scrape_or_queue = gallery_info_scraped['title']
+    title_from_scrape_or_queue = gallery_info_scraped['title'] # Teraz to powinien być opis
     expected_count_from_scan = gallery_info_scraped.get('count')
     gallery_id = utils.get_gallery_id(gallery_url)
 
     if not gallery_id: logger.error(f"Brak ID dla URL: {gallery_url}. Pomijam."); return False
 
     gallery_entry = model_galleries_data.get(gallery_id, {})
-    original_title_for_display = gallery_entry.get("original_title_from_list") or title_from_scrape_or_queue or gallery_id
+    # Używamy tytułu (opisu) jako głównego, jeśli jest dostępny
+    original_title_for_display = gallery_entry.get("determined_title") or gallery_entry.get("original_title_from_list") or title_from_scrape_or_queue or gallery_id
     model_data_dir = data_manager.get_model_data_dir(model_name_sanitized)
     initial_downloaded_count = gallery_entry.get("downloaded_count", 0)
 
     logger.debug(f"PSG: ID: {gallery_id} ('{original_title_for_display}'), Oczekiwane (scan/q): {expected_count_from_scan}, Pobrane (JSON): {initial_downloaded_count}")
     reporting.update_current_status("Przygotowanie galerii...", model=model_name_original, gallery=original_title_for_display, gallery_id=gallery_id, is_processing=True, downloaded_count=initial_downloaded_count, expected_count=expected_count_from_scan or gallery_entry.get("expected_count"))
-    
+
     try:
         driver_utils.safe_driver_get(driver, gallery_url)
-        determined_title = gallery_entry.get("determined_title") or _determine_descriptive_foldername_base(driver, gallery_url, original_title_for_display, model_name_original)
+        # Używamy tytułu (opisu) jako podstawy do nazwy folderu, jeśli nic lepszego nie ma
+        determined_title = gallery_entry.get("determined_title") or _determine_descriptive_foldername_base(driver, gallery_url, title_from_scrape_or_queue, model_name_original)
         folder_path = gallery_entry.get("folder_path_on_disk") or determine_gallery_folder_path(model_data_dir, determined_title, gallery_id)
         os.makedirs(folder_path, exist_ok=True)
 
@@ -179,7 +183,7 @@ def process_single_gallery(driver, model_name_original, gallery_info_scraped):
             except NoSuchElementException: logger.warning(f"PSG: Brak licznika ('h1 > span.ms-1') na str. galerii '{gallery_id}'.")
             except Exception as e: logger.warning(f"PSG: Błąd pob. licznika ze str. galerii: {e}", exc_info=False)
         else: logger.info(f"PSG: Pomijam spr. licznika na str. galerii (status: {gallery_entry.get('status')}, expected: {expected_count}).")
-        
+
         logger.info(f"PSG: Ostateczny expected_count dla '{determined_title}': {expected_count or '?'}")
         current_files_on_disk = set(os.listdir(folder_path)) if os.path.exists(folder_path) else set()
         final_dl_count = len(current_files_on_disk); new_dl_session = 0
@@ -219,13 +223,14 @@ def process_single_gallery(driver, model_name_original, gallery_info_scraped):
         elif final_dl_count > 0: status = "downloaded_unknown_total"
         logger.debug(f"PSG: Status galerii '{determined_title}': {status}")
 
-        model_galleries_data[gallery_id] = {"url": gallery_url, "original_title_from_list": original_title_for_display, "determined_title": determined_title, "folder_path_on_disk": folder_path, "expected_count": expected_count, "downloaded_count": final_dl_count, "status": status, "last_processed_timestamp": time.strftime("%Y-%m-%d %H:%M:%S")}
+        # Zapisujemy 'title_from_scrape_or_queue' jako 'original_title_from_list'
+        model_galleries_data[gallery_id] = {"url": gallery_url, "original_title_from_list": title_from_scrape_or_queue, "determined_title": determined_title, "folder_path_on_disk": folder_path, "expected_count": expected_count, "downloaded_count": final_dl_count, "status": status, "last_processed_timestamp": time.strftime("%Y-%m-%d %H:%M:%S")}
         incomplete_list = data_manager.load_incomplete_galleries()
         incomplete_list = [g for g in incomplete_list if g.get('url') != gallery_url]
-        if not is_complete and expected_count is not None and final_dl_count < expected_count: incomplete_list.append({'url': gallery_url, 'expected': expected_count, 'downloaded': final_dl_count, 'folder': folder_path, 'model_name': model_name_original, 'gallery_title': determined_title})
+        if not is_complete and expected_count is not None and final_dl_count < expected_count: incomplete_list.append({'url': gallery_url, 'expected': expected_count, 'downloaded': final_dl_count, 'folder': folder_path, 'model_name': model_name_original, 'gallery_title': determined_title}) # Użyj determined_title
         data_manager.save_incomplete_galleries(incomplete_list)
         data_manager.save_model_galleries_data(model_name_sanitized, model_galleries_data)
-        
+
         time.sleep(0.25)
 
         pause = config_handler.current_config['pauses_and_rotation']['gallery_pause']['value']
@@ -234,8 +239,9 @@ def process_single_gallery(driver, model_name_original, gallery_info_scraped):
     except constants.RestartRequiredError: reporting.update_current_status("Restart wymagany", model=model_name_original, gallery=original_title_for_display, gallery_id=gallery_id, is_processing=False); raise
     except Exception as e:
         logger.exception(f"PSG: Błąd krytyczny dla {gallery_id} ('{original_title_for_display}'): {e}")
-        entry = model_galleries_data.get(gallery_id, {}); entry.update({"url": gallery_url, "original_title_from_list": original_title_for_display, "status": "error", "error_message": str(e)[:500], "last_processed_timestamp": time.strftime("%Y-%m-%d %H:%M:%S")})
-        if "determined_title" not in entry: entry["determined_title"] = original_title_for_display
+        entry = model_galleries_data.get(gallery_id, {});
+        entry.update({"url": gallery_url, "original_title_from_list": title_from_scrape_or_queue, "status": "error", "error_message": str(e)[:500], "last_processed_timestamp": time.strftime("%Y-%m-%d %H:%M:%S")})
+        if "determined_title" not in entry: entry["determined_title"] = title_from_scrape_or_queue
         if "folder_path_on_disk" not in entry and 'folder_path' in locals() and locals()['folder_path']: entry["folder_path_on_disk"] = locals()['folder_path']
         elif "folder_path_on_disk" not in entry: entry["folder_path_on_disk"] = "Błąd - ścieżka nieustalona"
         model_galleries_data[gallery_id] = entry; data_manager.save_model_galleries_data(model_name_sanitized, model_galleries_data)
@@ -253,26 +259,41 @@ def _update_model_profile_after_scan(model_name_original, scanned_gallery_infos)
         if not gid: continue
         existing_entry = current_model_profile_data.get(gid, {}); current_status = existing_entry.get("status")
         scanned_count = scanned_info.get('count'); existing_count = existing_entry.get('expected_count')
-        scanned_title = scanned_info['title']; existing_title = existing_entry.get("original_title_from_list", gid)
+        scanned_title = scanned_info['title']; # To jest teraz opis
+        existing_title = existing_entry.get("original_title_from_list", gid) # Stary tytuł
         needs_processing = False; needs_json_update = False
-        
+
         if not existing_entry:
             logger.debug(f"UMS: Nowa galeria {gid} ('{scanned_title}', Licznik: {scanned_count})."); needs_processing = True; needs_json_update = True
         else:
-            title_changed = scanned_title and scanned_title != existing_title
+            # Sprawdzamy, czy nowy opis jest inny niż stary *original* LUB *determined*
+            title_changed = scanned_title and (scanned_title != existing_title or scanned_title != existing_entry.get("determined_title"))
             count_is_new_and_better = scanned_count is not None and (existing_count is None or scanned_count > existing_count)
-            if title_changed: logger.info(f"UMS: Tytuł {gid} ('{existing_title}' -> '{scanned_title}')."); needs_json_update = True
+
+            if title_changed: logger.info(f"UMS: Tytuł/Opis {gid} ('{existing_title}' -> '{scanned_title}')."); needs_json_update = True
             if count_is_new_and_better: logger.info(f"UMS: Licznik {gid} ('{scanned_title}') zaktualizowany ({existing_count} -> {scanned_count})."); needs_json_update = True; needs_processing = True
             if not needs_processing and current_status in ['pending_check', 'error', 'partially_downloaded', 'downloaded_unknown_total']:
-                logger.debug(f"UMS: Galeria {gid} wymaga przetw. (status: {current_status})."); needs_processing = True; needs_json_update = True 
+                logger.debug(f"UMS: Galeria {gid} wymaga przetw. (status: {current_status})."); needs_processing = True; needs_json_update = True
             if current_status in ["completed", "completed_with_tolerance"] and not count_is_new_and_better:
                  needs_processing = False;
                  if title_changed: needs_json_update = True
 
         if needs_json_update:
             profile_updated_flag = True
-            current_model_profile_data[gid] = {"url": scanned_info['url'], "original_title_from_list": scanned_title or existing_title, "expected_count": scanned_count if scanned_count is not None else existing_count, "status": "pending_check" if needs_processing else existing_entry.get("status", "pending_check"), "downloaded_count": existing_entry.get("downloaded_count", 0), "determined_title": existing_entry.get("determined_title", scanned_title or gid), "folder_path_on_disk": existing_entry.get("folder_path_on_disk"), "last_processed_timestamp": None if needs_processing else existing_entry.get("last_processed_timestamp")}
-        if needs_processing: galleries_to_process.append({'url': scanned_info['url'], 'title': scanned_title or existing_title, 'count': scanned_count if scanned_count is not None else existing_count})
+            # Aktualizujemy oba pola - original i determined, priorytetyzując nowy opis
+            current_model_profile_data[gid] = {
+                "url": scanned_info['url'],
+                "original_title_from_list": scanned_title or existing_title,
+                "expected_count": scanned_count if scanned_count is not None else existing_count,
+                "status": "pending_check" if needs_processing else existing_entry.get("status", "pending_check"),
+                "downloaded_count": existing_entry.get("downloaded_count", 0),
+                "determined_title": scanned_title or existing_entry.get("determined_title", gid), # Zawsze użyj nowego opisu jako 'determined'
+                "folder_path_on_disk": existing_entry.get("folder_path_on_disk"),
+                "last_processed_timestamp": None if needs_processing else existing_entry.get("last_processed_timestamp")
+            }
+        if needs_processing:
+            # Przekazujemy nowy opis do kolejki przetwarzania
+            galleries_to_process.append({'url': scanned_info['url'], 'title': scanned_title, 'count': scanned_count if scanned_count is not None else existing_count})
 
     if profile_updated_flag or not os.path.exists(data_manager.get_model_galleries_filepath(model_name_sanitized)):
         data_manager.save_model_galleries_data(model_name_sanitized, current_model_profile_data)
@@ -280,11 +301,11 @@ def _update_model_profile_after_scan(model_name_original, scanned_gallery_infos)
     return galleries_to_process
 
 def handle_priority_item(item, driver_instance=None):
-    config_handler.load_config(); item_type = item.get("type"); payload = item.get("data") 
+    config_handler.load_config(); item_type = item.get("type"); payload = item.get("data")
     item_display_info = str(payload.get("id", str(payload))) if isinstance(payload, dict) else str(payload)
     if not item_type or payload is None: logger.warning(f"Nieprawidłowy element priorytetowy: {item}."); return
     logger.info(f"Priorytet: Typ='{item_type}', Dane='{item_display_info}'"); driver = None; created_here = False
-    rre_occurred = False 
+    rre_occurred = False
     try:
         if item_type == "scan_model":
             model_name = str(payload); reporting.update_current_status("Priorytet: Skan modelu", model=model_name, is_processing=True)
@@ -307,28 +328,28 @@ def handle_priority_item(item, driver_instance=None):
             process_single_gallery(driver, model, info_g)
             time.sleep(0.25); reporting.generate_global_html_status()
             logger.info(f"Zakończono priorytet {gid} dla {model}."); reporting.update_current_status(f"Zakończono galerię {title}", model=model, gallery_id=gid, gallery=title, is_processing=False)
-    except constants.RestartRequiredError as rre: 
-        rre_occurred = True 
-        logger.warning(f"RRE w handle_priority_item: {rre}."); 
-        if created_here and driver: 
-            try: 
+    except constants.RestartRequiredError as rre:
+        rre_occurred = True
+        logger.warning(f"RRE w handle_priority_item: {rre}.");
+        if created_here and driver:
+            try:
                 driver.quit()
                 logger.info("Zamknięto driver (HPI) po RRE (utworzony lokalnie).")
-            except Exception as e: 
+            except Exception as e:
                 logger.warning(f"Błąd quit HPI RRE: {e}")
         raise
-    except Exception as e: 
-        logger.exception(f"Błąd priorytetu {item_display_info}: {e}"); 
+    except Exception as e:
+        logger.exception(f"Błąd priorytetu {item_display_info}: {e}");
         reporting.update_current_status(f"Błąd kryt. prio {item_type} - {item_display_info}", is_processing=False)
     finally:
-        if driver and created_here and not rre_occurred: 
-            logger.info(f"Zamykam driver HPI (finally, no RRE) dla {item_display_info}"); 
-            try: 
+        if driver and created_here and not rre_occurred:
+            logger.info(f"Zamykam driver HPI (finally, no RRE) dla {item_display_info}");
+            try:
                 driver.quit()
-            except Exception as e: 
+            except Exception as e:
                 logger.warning(f"Błąd quit HPI finally (no RRE): {e}")
-        
-        exception_other_than_rre = 'e' in locals() 
+
+        exception_other_than_rre = 'e' in locals()
         if not main.shutdown_requested and not rre_occurred and not exception_other_than_rre:
             if not data_manager.load_script_state().get("current_operation",{}).get("name"):
                  reporting.update_current_status("Oczekiwanie...",is_processing=False)
@@ -346,25 +367,25 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete"):
         for model_idx in range(start_model_index, len(models_list)):
             if main.shutdown_requested or err_stop: logger.info("HPM: Stop/Shutdown."); break
             if config_handler.load_config(): logger.info("HPM: Config przeładowany.")
-            
+
             prio_batch_count = 0
             while True:
                 if main.shutdown_requested: err_stop=True; break
                 p_q = data_manager.load_priority_queue()
                 if not p_q: break
                 if prio_batch_count >= 5: logger.info(f"HPM: Przetworzono {prio_batch_count} prio. Kontynuuję model."); break
-                
-                logger.info(f"HPM: {len(p_q)} prio. Przetwarzam..."); 
-                item_p = p_q.pop(0); 
+
+                logger.info(f"HPM: {len(p_q)} prio. Przetwarzam...");
+                item_p = p_q.pop(0);
                 data_manager.save_priority_queue(p_q)
-                
+
                 try:
                     handle_priority_item(item_p, driver_instance=driver)
-                except constants.RestartRequiredError as rre_p: 
+                except constants.RestartRequiredError as rre_p:
                     logger.warning(f"RRE w prio {item_p}: {rre_p}.")
-                    if not driver_utils.is_driver_responsive(driver): 
+                    if not driver_utils.is_driver_responsive(driver):
                         driver = driver_utils.create_driver_with_retry()
-                    raise rre_p 
+                    raise rre_p
                 except Exception as e_p:
                     logger.exception(f"Błąd w prio {item_p}: {e_p}")
                     if not driver_utils.is_driver_responsive(driver):
@@ -392,8 +413,8 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete"):
                     time.sleep(0.25); reporting.generate_global_html_status()
                     if main.shutdown_requested: err_stop=True; break
                 except constants.RestartRequiredError: raise
-                except Exception as e_s: 
-                    logger.error(f"HPM: Błąd skanu {model_name}: {e_s}", exc_info=True); last_err=e_s; 
+                except Exception as e_s:
+                    logger.error(f"HPM: Błąd skanu {model_name}: {e_s}", exc_info=True); last_err=e_s;
                     data_manager.update_last_model_index(model_idx); time.sleep(0.25); reporting.generate_global_html_status();
                     if main.shutdown_requested: err_stop=True; break
                     continue
@@ -405,7 +426,7 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete"):
             if err_stop: break
             if not g_to_process: logger.info(f"HPM: Brak galerii do przetworzenia dla {model_name}.");
             else: logger.info(f"HPM: Przetwarzam {len(g_to_process)} galerii dla {model_name}...")
-            
+
             for g_info in g_to_process: # Poziom wcięcia 1 (wewnątrz pętli modeli)
                 if main.shutdown_requested: err_stop=True; break # Poziom wcięcia 2
                 if data_manager.load_priority_queue(): # Poziom wcięcia 2
@@ -420,11 +441,11 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete"):
                 except Exception as e_g: # Poziom wcięcia 2
                     logger.exception(f"Błąd w galerii {g_info.get('title')}: {e_g}") # Poziom wcięcia 3
                     last_err=e_g # Poziom wcięcia 3
-                
+
                 # === POPRAWKA TUTAJ ===
                 # Ta linia musi być na tym samym poziomie co blok try/except powyżej
                 if main.shutdown_requested: err_stop=True; break # Poziom wcięcia 2
-                
+
                 g_processed_vpn+=1 # Poziom wcięcia 2
                 time.sleep(0.25) # Poziom wcięcia 2
                 reporting.generate_global_html_status() # Poziom wcięcia 2
@@ -435,35 +456,35 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete"):
             # Koniec pętli for g_info
             if err_stop: break # Poziom wcięcia 1 (po pętli for g_info)
 
-            data_manager.update_last_model_index(model_idx); 
-            reporting.update_current_status(f"Zakończono model {model_name}", model=model_name, is_processing=False); 
-            time.sleep(0.25); reporting.generate_global_html_status(); 
+            data_manager.update_last_model_index(model_idx);
+            reporting.update_current_status(f"Zakończono model {model_name}", model=model_name, is_processing=False);
+            time.sleep(0.25); reporting.generate_global_html_status();
             logger.info(f"--- Zakończono model {model_name} ---")
         # Koniec pętli for model_idx
 
-        if not main.shutdown_requested and not err_stop: 
-            logger.info(f"🎉 HPM: ZAKOŃCZONO ({check_mode}) 🎉"); 
-            data_manager.update_last_model_index(-1); 
+        if not main.shutdown_requested and not err_stop:
+            logger.info(f"🎉 HPM: ZAKOŃCZONO ({check_mode}) 🎉");
+            data_manager.update_last_model_index(-1);
             data_manager.clear_active_operation()
-    except constants.RestartRequiredError as rre_o: 
-        last_err=rre_o; 
-        logger.warning(f"RRE w HPM: {rre_o}."); 
+    except constants.RestartRequiredError as rre_o:
+        last_err=rre_o;
+        logger.warning(f"RRE w HPM: {rre_o}.");
         raise
-    except Exception as e_o: 
-        last_err=e_o; 
-        logger.exception(f"Błąd krytyczny HPM: {e_o}"); 
+    except Exception as e_o:
+        last_err=e_o;
+        logger.exception(f"Błąd krytyczny HPM: {e_o}");
         data_manager.clear_active_operation()
     finally:
-        if driver: 
+        if driver:
             logger.info("Zamykam driver (finally HPM)...")
-            try: 
+            try:
                 driver.quit()
-            except Exception as e_q: 
+            except Exception as e_q:
                 logger.warning(f"Błąd zamykania drivera w HPM: {e_q}")
-        
+
         is_rre_f = isinstance(last_err, constants.RestartRequiredError)
         if not main.shutdown_requested and not is_rre_f:
-            op_s = data_manager.load_script_state().get("current_operation",{}); 
+            op_s = data_manager.load_script_state().get("current_operation",{});
             msg_f = "Zakończono/Przerwano modele."
             if not op_s.get("name"): msg_f = "Zakończono modele. Oczekiwanie."
             reporting.update_current_status(msg_f, is_processing=False)
@@ -497,11 +518,11 @@ def handle_fill_incomplete():
     except constants.RestartRequiredError as rre_h: last_err_hfi=rre_h; logger.warning(f"RRE w HFI: {rre_h}."); raise
     except Exception as e_h: last_err_hfi=e_h; logger.exception(f"Błąd krytyczny HFI: {e_h}"); data_manager.clear_active_operation()
     finally:
-        if driver: 
+        if driver:
             logger.info("Zamykam driver (finally HFI)...")
-            try: 
+            try:
                 driver.quit()
-            except Exception as e_qf: 
+            except Exception as e_qf:
                 logger.warning(f"Błąd zamykania drivera w HFI: {e_qf}")
         is_rre_fin_hfi = isinstance(last_err_hfi, constants.RestartRequiredError)
         if not main.shutdown_requested and not is_rre_fin_hfi:
