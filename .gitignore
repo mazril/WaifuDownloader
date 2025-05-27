@@ -6,3 +6,7 @@
 !*.py
 !*.json
 !.gitignore
+
+# Ignoruj konkretne pliki JSON
+status_aggregate.json
+current_status.json
