@@ -1,0 +1,8 @@
+# Ignoruj wszystko...
+*
+
+# ...oprócz wybranych rozszerzeń
+!*.php
+!*.py
+!*.json
+!.gitignore
