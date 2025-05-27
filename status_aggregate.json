@@ -487,12 +487,12 @@
                 },
                 "94878": {
                     "title": "Nezuko Kamado By AeryTiefling",
-                    "folder": null,
+                    "folder": "D:\\Projekt\\Downloadery\\WaifuDownloaderGemini\\Modelki\\Aery-Tiefling\\Nezuko Kamado By AeryTiefling_94878",
                     "expected": 79,
-                    "downloaded": 0,
+                    "downloaded": 79,
                     "url": "https://waifubitches.com/gallery/94878",
-                    "status_color": "red",
-                    "completed": false,
+                    "status_color": "green",
+                    "completed": true,
                     "model_name": "Aery-Tiefling",
                     "gallery_id": "94878"
                 },
