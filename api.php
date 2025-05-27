@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
-$action = $_GET['action'] ?? $_POST['action'] ?? null; // Sprawdź też POST dla update_queue
+$action = $_GET['action'] ?? $_POST['action'] ?? null;
 $response = ['success' => false, 'message' => 'Nieznana akcja lub brak akcji.'];
 
 switch ($action) {
@@ -22,7 +22,6 @@ switch ($action) {
         if ($status_data) {
             echo json_encode($status_data);
         } else {
-            // Zwróć pusty, ale poprawny status, jeśli plik nie istnieje lub jest pusty
             echo json_encode([
                 "timestamp" => date("Y-m-d H:i:s"),
                 "message" => "Oczekiwanie na pierwszy status ze skryptu Python...",
@@ -42,7 +41,7 @@ switch ($action) {
         echo json_encode($queue_data);
         exit();
 
-    case 'get_aggregate': // NOWA AKCJA
+    case 'get_aggregate':
         $aggregate_data = load_json_file(STATUS_JSON_AGGREGATE_PATH, ["models" => []]);
         echo json_encode($aggregate_data);
         exit();
@@ -70,7 +69,7 @@ switch ($action) {
     case 'add_model':
         $model_name = trim($_GET['model_name'] ?? '');
         if (!empty($model_name)) {
-            $current_list = read_model_list(); // Funkcja z php_utils.php
+            $current_list = read_model_list();
             $exists = false;
             foreach ($current_list as $m) {
                 if (strcasecmp($m, $model_name) === 0) { $exists = true; break; }
@@ -78,15 +77,15 @@ switch ($action) {
             if ($exists) {
                 $response['message'] = "Modelka '$model_name' już istnieje na liście.";
             } else {
-                $file_handle = fopen(LIST_FILE_PATH, 'a+'); // Otwórz w trybie do dopisywania
+                $file_handle = fopen(LIST_FILE_PATH, 'a+');
                 if ($file_handle && flock($file_handle, LOCK_EX)) {
-                    fseek($file_handle, 0, SEEK_END); // Przejdź na koniec pliku
+                    fseek($file_handle, 0, SEEK_END);
                     $current_size = ftell($file_handle);
                     $line_to_add = $model_name . "\n";
-                    if ($current_size > 0) { // Jeśli plik nie jest pusty
-                        fseek($file_handle, -1, SEEK_END); // Cofnij o jeden bajt
-                        if (fread($file_handle, 1) !== "\n") { // Sprawdź, czy ostatni znak to nowa linia
-                            $line_to_add = "\n" . $line_to_add; // Dodaj nową linię, jeśli jej nie ma
+                    if ($current_size > 0) {
+                        fseek($file_handle, -1, SEEK_END);
+                        if (fread($file_handle, 1) !== "\n") {
+                            $line_to_add = "\n" . $line_to_add;
                         }
                     }
                     fwrite($file_handle, $line_to_add);
@@ -104,7 +103,7 @@ switch ($action) {
 
     case 'prioritize':
         $type = $_GET['type'] ?? null;
-        $id_param = $_GET['id'] ?? null; // Nazwa modelki lub ID galerii
+        $id_param = $_GET['id'] ?? null;
 
         if ($type && $id_param) {
             $item_data_for_queue = null;
@@ -112,18 +111,24 @@ switch ($action) {
             $added_successfully = false;
 
             if ($type === 'scan_model') {
-                $item_data_for_queue = $id_param; // Dla 'scan_model' dane to nazwa modelki
+                $item_data_for_queue = $id_param;
                 if (add_to_priority_queue('scan_model', $item_data_for_queue, true)) {
                     $message = "Zadanie skanowania dla '$id_param' dodane na początek kolejki.";
                     $added_successfully = true;
                 } else {
                    $message = "Zadanie skanowania dla '$id_param' już jest w kolejce lub wystąpił błąd.";
                 }
+            } elseif ($type === 'scan_model_refresh_only') { // <-- NOWA SEKCJA
+                $item_data_for_queue = $id_param;
+                if (add_to_priority_queue('scan_model_refresh_only', $item_data_for_queue, true)) {
+                    $message = "Zadanie odświeżania opisów dla '$id_param' dodane na początek kolejki.";
+                    $added_successfully = true;
+                } else {
+                   $message = "Zadanie odświeżania dla '$id_param' już jest w kolejce lub wystąpił błąd.";
+                }
             } elseif ($type === 'gallery') {
-                // $id_param to ID galerii
-                $gallery_full_data = find_gallery_data_by_id($id_param); // Z php_utils.php
+                $gallery_full_data = find_gallery_data_by_id($id_param);
                 if ($gallery_full_data) {
-                    // $gallery_full_data to już słownik: {"id": "id_galerii", "model_name": ..., "title": ..., "count": ...}
                     $item_data_for_queue = $gallery_full_data;
                     if (add_to_priority_queue('gallery', $item_data_for_queue, true)) {
                         $message = "Galeria '{$gallery_full_data['title']}' (model: {$gallery_full_data['model_name']}) dodana na początek kolejki.";
