@@ -1,12 +1,12 @@
-# Ignoruj wszystko...
+# Ignoruj wszystko
 *
 
-# ...oprócz wybranych rozszerzeń
+# Ale NIE ignoruj konkretnych rozszerzeń
 !*.php
 !*.py
 !*.json
 !.gitignore
 
-# Ignoruj konkretne pliki JSON
-status_aggregate.json
-current_status.json
+# Następnie jawnie ZIGNORUJ konkretne pliki, mimo że są *.json
+/status_aggregate.json
+/current_status.json
