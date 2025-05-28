@@ -1,0 +1,10 @@
+# Ignoruj wszystko
+*
+
+# Ale nie ignoruj folderów (trzeba żeby Git mógł wejść do nich i znaleźć dozwolone pliki)
+!*/
+
+# Uwzględnij tylko pliki z wybranymi rozszerzeniami
+!*.php
+!*.py
+!*.json
