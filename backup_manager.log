@@ -105,3 +105,10 @@ PermissionError: [WinError 5] Odmowa dostępu: 'D:\\Projekt\\Downloadery\\WaifuD
 2025-05-28 17:24:42,711 [INFO    ] [config_handler      : 105] Konfiguracja załadowana/zaktualizowana. (mtime: 1748417020.2448)
 2025-05-28 17:24:42,711 [INFO    ] [__main__            : 293] Przywracanie bazy danych 'waifudownloader' z pliku: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_172423.sql
 2025-05-28 17:24:42,711 [INFO    ] [__main__            : 304] Usuwanie istniejącej bazy danych 'waifudownloader'...
+2025-05-28 17:24:42,867 [INFO    ] [__main__            : 316] Baza danych 'waifudownloader' usunięta (jeśli istniała).
+2025-05-28 17:24:42,867 [INFO    ] [__main__            : 329] Tworzenie nowej bazy danych 'waifudownloader'...
+2025-05-28 17:24:42,892 [INFO    ] [__main__            : 337] Baza danych 'waifudownloader' utworzona pomyślnie.
+2025-05-28 17:24:42,894 [INFO    ] [__main__            : 347] Importowanie danych do bazy 'waifudownloader' z pliku D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_172423.sql...
+2025-05-28 17:24:43,008 [INFO    ] [__main__            : 355] Pomyślnie przywrócono bazę danych 'waifudownloader' z pliku D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_172423.sql.
+2025-05-28 17:24:43,008 [INFO    ] [__main__            : 437] --- Przywracanie bazy danych zakończone pomyślnie ---
+2025-05-28 17:24:43,008 [INFO    ] [__main__            : 442] >>> Pełne przywracanie z zestawu backupu zakończone pomyślnie. <<<
