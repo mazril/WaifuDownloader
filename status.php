@@ -3,9 +3,7 @@
 require_once 'php_config.php'; // Zawiera php_db_config.php
 require_once 'php_utils.php';  // Zawiera funkcje pomocnicze
 
-// $global_data jest teraz puste, dane będą ładowane przez JavaScript z API
-$sorted_models = []; // Zostanie wypełnione przez JS
-$aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane przez JS
+$aggregate_last_modified_timestamp = "Ładowanie..."; 
 
 ?>
 <!DOCTYPE html>
@@ -20,14 +18,14 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
         .toggle { cursor: pointer; margin-right: 8px; font-weight: bold; user-select: none; width: 15px; display: inline-block; text-align: center; color: #333; }
         .model-li { margin-bottom: 8px; background-color: #fff; border: 1px solid #ddd; padding: 0; border-radius: 5px; box-shadow: 0 1px 2px rgba(0, 0, 0, .05); overflow: hidden; }
         .model-header { display: flex; align-items: center; padding: 8px 12px; background-color: #e9ecef; border-bottom: 1px solid #ddd; transition: background-color 0.3s; }
-        .model-li.model-partial > .model-header { background-color: #FFE0B2; } /* Pomarańczowy dla częściowo ukończonych */
-        .model-li.model-complete > .model-header { background-color: #A5D6A7; } /* Zielony dla ukończonych */
-        .model-li.model-processing > .model-header { background-color: #B3E5FC; } /* Jasnoniebieski dla przetwarzanych */
+        .model-li.model-partial > .model-header { background-color: #FFE0B2; } 
+        .model-li.model-complete > .model-header { background-color: #A5D6A7; } 
+        .model-li.model-processing > .model-header { background-color: #B3E5FC; } 
         .model-header .model-name { flex-grow: 1; font-weight: bold; }
         ul.nested { display: none; padding-left: 25px; border-left: 2px solid #dee2e6; margin-left: 7px; background-color: #fff; margin-top: 5px; border-radius: 4px; padding: 10px; }
         ul.nested.active { display: block; }
         .gallery-li { margin-bottom: 4px; border-bottom: 1px solid #f1f3f5; padding: 6px 0; display: flex; justify-content: space-between; align-items: center; transition: background-color 0.3s; }
-        .gallery-li.processing { background-color: #e0f7fa !important; } /* Bardziej wyraźny niebieski dla przetwarzanej galerii */
+        .gallery-li.processing { background-color: #e0f7fa !important; } 
         .gallery-link { flex-grow: 1; margin-right: 10px; font-size: 0.95em; display: flex; align-items: center; }
         .gallery-controls { display: flex; align-items: center; flex-shrink: 0; }
         .newly-found-count { font-size: 0.8em; color: #007bff; margin-right: 8px; display: none; }
@@ -112,6 +110,7 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
     const API_URL = '<?php echo API_URL; ?>';
     const toastDiv = document.getElementById('toast');
     const modelTreeUl = document.getElementById('model-tree');
+    const statusDiv = document.getElementById('current-status'); // ZDEFINIOWANO GLOBALNIE
 
     let activeGalleryIdForUI = null;
     let activeModelNameSanitizedForUI = null;
@@ -195,7 +194,10 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
 
     function updateGalleryUI(galleryId, downloaded, expected, scanSessionFound, titleFromServer = null, urlFromServer = null, folderFromServer = null) {
         const galleryLi = document.getElementById('gallery_li_' + galleryId);
-        if (!galleryLi) { console.warn("updateGalleryUI: Nie znaleziono LI dla galerii", galleryId); return; }
+        if (!galleryLi) { 
+            console.warn("updateGalleryUI: Nie znaleziono LI dla galerii", galleryId); // Zmieniono na warn
+            return; 
+        }
 
         const statusSpan = galleryLi.querySelector('.gallery-status');
         const progressBar = galleryLi.querySelector('.progress-bar');
@@ -204,7 +206,8 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
         const linkA = galleryLi.querySelector('.gallery-link a');
 
         if (!statusSpan || !progressBar || !progressContainer || !newlyFoundSpan || !linkA) {
-            console.warn("updateGalleryUI: Brak jednego z elementów UI dla galerii", galleryId); return;
+            console.warn("updateGalleryUI: Brak jednego z elementów UI dla galerii", galleryId); 
+            return;
         }
 
         const expectedVal = (expected !== null && expected !== undefined) ? parseInt(expected, 10) : (galleryLi.dataset.expected !== '?' ? parseInt(galleryLi.dataset.expected, 10) : '?');
@@ -261,7 +264,12 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
     }
 
     function updateStatus() {
-        const statusDiv = document.getElementById('current-status');
+        // statusDiv jest teraz globalny
+        if (!statusDiv) { // Dodatkowe zabezpieczenie
+            console.error("updateStatus: statusDiv nie jest zdefiniowany!");
+            return;
+        }
+
         fetch(`${API_URL}?action=get_status&_=${new Date().getTime()}`)
             .then(response => {
                 if (!response.ok) throw new Error('HTTP error! status: ' + response.status);
@@ -316,6 +324,11 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                                  if(toggle) toggle.textContent = '−';
                              }
                          }
+                    } else {
+                        // Jeśli element galerii nie istnieje, a powinien być przetwarzany,
+                        // może to oznaczać, że fetchAggregateDataAndUpdateModels jeszcze go nie stworzył.
+                        // Poczekajmy na następne wywołanie fetchAggregateDataAndUpdateModels.
+                        console.warn(`updateStatus: Próba aktualizacji nieistniejącej galerii ${activeGalleryIdForUI} jako przetwarzanej.`);
                     }
                     updateGalleryUI(activeGalleryIdForUI, data.current_download_count, data.current_expected_count, data.scan_session_found_count);
                 
@@ -333,7 +346,13 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                     triggerDelayedAggregateRefresh();
                 }
             })
-            .catch(error => { console.error("Błąd odświeżania statusu:", error); statusDiv.textContent = 'Błąd odświeżania statusu: ' + error.message; statusDiv.style.backgroundColor = '#ffcdd2'; }); 
+            .catch(error => { 
+                console.error("Błąd odświeżania statusu (catch):", error); // Dodano (catch)
+                if (statusDiv) { // Sprawdź czy statusDiv istnieje przed użyciem
+                    statusDiv.textContent = 'Błąd odświeżania statusu: ' + error.message; 
+                    statusDiv.style.backgroundColor = '#ffcdd2'; 
+                }
+            }); 
     }
 
     function triggerDelayedAggregateRefresh(delay = 2500) { 
@@ -346,36 +365,46 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
     }
 
     function fetchAggregateDataAndUpdateModels(forceFullRender = false) {
-        console.log(`fetchAggregateDataAndUpdateModels wywołane. forceFullRender: ${forceFullRender}`); // DODANO LOG
+        console.log(`fetchAggregateDataAndUpdateModels wywołane. forceFullRender: ${forceFullRender}`);
         fetch(`${API_URL}?action=get_aggregate&_=${new Date().getTime()}`)
             .then(response => {
-                if (!response.ok) throw new Error('HTTP error! status: ' + response.status + ', text: ' + response.statusText); // DODANO response.statusText
+                if (!response.ok) {
+                    console.error(`Błąd HTTP w get_aggregate: ${response.status} ${response.statusText}`);
+                    return response.text().then(text => { // Spróbuj odczytać tekst błędu
+                        throw new Error(`HTTP error! status: ${response.status} ${response.statusText}, body: ${text.substring(0,500)}`);
+                    });
+                }
                 return response.json();
             })
             .then(aggregateData => {
-                console.log("Odpowiedź z get_aggregate:", JSON.stringify(aggregateData, null, 2)); // DODANO LOG
-                if (aggregateData && aggregateData.models) {
+                console.log("Odpowiedź z get_aggregate (surowa):", aggregateData); 
+                // console.log("Odpowiedź z get_aggregate (JSON string):", JSON.stringify(aggregateData, null, 2)); 
+                if (aggregateData && aggregateData.models && typeof aggregateData.models === 'object') { // Dodano typeof check
                     console.log("Otrzymano dane agregatu. Liczba modeli:", Object.keys(aggregateData.models).length); 
                     const modelsData = aggregateData.models;
                     const modelNamesSorted = Object.keys(modelsData).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
-                    if(forceFullRender) { // DODANO warunek
+                    if(forceFullRender) { 
                         modelTreeUl.innerHTML = ''; 
-                        console.log("Wyczyszczono modelTreeUl z powodu forceFullRender."); // DODANO LOG
+                        console.log("Wyczyszczono modelTreeUl z powodu forceFullRender."); 
                     }
                     
-                    if (modelNamesSorted.length === 0 && forceFullRender) { // Przeniesiono i zmodyfikowano warunek
-                         modelTreeUl.innerHTML = '<li>Brak modeli na liście lub w bazie danych. Dodaj modelki do pliku `lista.txt` i uruchom skrypt Python, następnie odśwież.</li>';
-                         console.log("Wyświetlono komunikat o braku modeli."); // DODANO LOG
-                         return; // Zakończ, jeśli nie ma modeli
-                    } else if (forceFullRender && modelTreeUl.querySelector('.loader')) { // Usuń loader tylko jeśli był pełny render
+                    if (modelNamesSorted.length === 0 && forceFullRender) { 
+                         modelTreeUl.innerHTML = '<li>Brak modeli na liście lub w bazie danych. Dodaj modelki do pliku `lista.txt`, uruchom skrypt Python, następnie odśwież.</li>';
+                         console.log("Wyświetlono komunikat o braku modeli."); 
+                         return; 
+                    } else if (forceFullRender && modelTreeUl.querySelector('.loader')) { 
                          modelTreeUl.querySelector('.loader').remove();
-                         console.log("Usunięto loader."); // DODANO LOG
+                         console.log("Usunięto loader."); 
                     }
 
 
                     modelNamesSorted.forEach(modelNameOriginal => {
                         const modelData = modelsData[modelNameOriginal];
+                        if (typeof modelData !== 'object' || modelData === null) { // Dodatkowe sprawdzenie
+                            console.warn(`Nieprawidłowe dane dla modelu ${modelNameOriginal}, pomijam.`);
+                            return; 
+                        }
                         const sanitizedModelName = modelData.sanitized_name || pySanitizeForQuerySelector(modelNameOriginal);
                         let modelLiElement = document.querySelector(`.model-li[data-model-name="${sanitizedModelName}"]`);
                         let nestedUl;
@@ -387,7 +416,6 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                             
                             const modelHeader = document.createElement('div');
                             modelHeader.className = 'model-header';
-                            // Używaj htmlspecialchars dla danych wyświetlanych w HTML, ale nie dla parametrów JS
                             const escapedModelName = modelNameOriginal.replace(/'/g, "\\'");
                             modelHeader.innerHTML = `
                                 <span class="toggle">+</span>
@@ -403,7 +431,6 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                             modelLiElement.appendChild(modelHeader);
                             modelLiElement.appendChild(nestedUl);
                             
-                            // Znajdź loader i wstaw przed nim, lub na końcu jeśli nie ma
                             const loaderLi = modelTreeUl.querySelector('.loader');
                             if(loaderLi) modelTreeUl.insertBefore(modelLiElement, loaderLi);
                             else modelTreeUl.appendChild(modelLiElement);
@@ -411,15 +438,17 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                             modelHeader.querySelector('.toggle').addEventListener('click', function() {
                                 nestedUl.classList.toggle('active');
                                 this.textContent = nestedUl.classList.contains('active') ? '−' : '+';
-                                if (nestedUl.classList.contains('active')) {
-                                    console.log(`Rozwinięto model ${modelNameOriginal}. Ładuję galerie...`); // DODANO LOG
-                                    fetchAggregateDataAndUpdateModels(false); 
+                                if (nestedUl.classList.contains('active') && !nestedUl.dataset.galleriesLoadedOnce) { // Załaduj galerie tylko jeśli nie były ładowane
+                                    console.log(`Rozwinięto model ${modelNameOriginal}. Ładuję galerie (pierwszy raz)...`); 
+                                    fetchAggregateDataAndUpdateModels(false); // false, bo tylko ten model
+                                } else if (nestedUl.classList.contains('active')) {
+                                     console.log(`Model ${modelNameOriginal} już był rozwinięty i galerie załadowane.`);
                                 }
                             });
-                            console.log("Utworzono nowy LI dla modelu:", modelNameOriginal); // DODANO LOG
+                            console.log("Utworzono nowy LI dla modelu:", modelNameOriginal); 
                         } else {
                             nestedUl = modelLiElement.querySelector('ul.nested');
-                            console.log("Znaleziono istniejący LI dla modelu:", modelNameOriginal); // DODANO LOG
+                            console.log("Znaleziono istniejący LI dla modelu:", modelNameOriginal); 
                         }
 
                         const completedInModel = modelData.completed_galleries || 0;
@@ -428,9 +457,12 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
 
                         modelLiElement.querySelector('.model-name').textContent = `${modelNameOriginal} (${completedInModel}/${totalInModel})`;
                         const modelProgressBarDiv = modelLiElement.querySelector('.progress-bar');
-                        modelProgressBarDiv.style.width = `${modelProgressPercent.toFixed(1)}%`;
-                        modelProgressBarDiv.textContent = `${modelProgressPercent.toFixed(0)}%`;
-                        modelLiElement.querySelector('.progress-bar-container').title = `${modelProgressPercent.toFixed(1)}% ukończonych galerii`;
+                        if (modelProgressBarDiv) { // Dodano sprawdzenie
+                            modelProgressBarDiv.style.width = `${modelProgressPercent.toFixed(1)}%`;
+                            modelProgressBarDiv.textContent = `${modelProgressPercent.toFixed(0)}%`;
+                        }
+                        const progressBarContainer = modelLiElement.querySelector('.progress-bar-container');
+                        if(progressBarContainer) progressBarContainer.title = `${modelProgressPercent.toFixed(1)}% ukończonych galerii`;
                         
                         modelLiElement.classList.remove('model-complete', 'model-partial', 'model-processing');
                         if (modelLiElement.dataset.modelName === activeModelNameSanitizedForUI) {
@@ -441,23 +473,27 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                             modelLiElement.classList.add('model-partial');
                         }
 
-                        if (nestedUl.classList.contains('active') || forceFullRender) {
-                             console.log(`Aktualizuję galerie dla ${modelNameOriginal} (aktywny: ${nestedUl.classList.contains('active')}, force: ${forceFullRender})`); // DODANO LOG
-                            // if(forceFullRender || !nestedUl.dataset.galleriesLoaded) { // Zmieniono warunek czyszczenia
+
+                        if (nestedUl && (nestedUl.classList.contains('active') || forceFullRender)) {
+                             console.log(`Aktualizuję galerie dla ${modelNameOriginal} (aktywny: ${nestedUl.classList.contains('active')}, force: ${forceFullRender})`); 
                             if(forceFullRender || (nestedUl.classList.contains('active') && !nestedUl.dataset.galleriesLoadedOnce)) {
                                 nestedUl.innerHTML = ''; 
-                                console.log(`Wyczyszczono galerie dla ${modelNameOriginal}.`); // DODANO LOG
+                                console.log(`Wyczyszczono galerie dla ${modelNameOriginal}.`); 
                             }
                             
                             const galleriesFromServer = modelData.galleries || {};
                             const galleryIdsSorted = Object.keys(galleriesFromServer).sort((a,b) => {
-                                const titleA = galleriesFromServer[a].title || a;
-                                const titleB = galleriesFromServer[b].title || b;
+                                const titleA = (galleriesFromServer[a] && galleriesFromServer[a].title) ? galleriesFromServer[a].title : a;
+                                const titleB = (galleriesFromServer[b] && galleriesFromServer[b].title) ? galleriesFromServer[b].title : b;
                                 return titleA.toLowerCase().localeCompare(titleB.toLowerCase());
                             });
 
                             galleryIdsSorted.forEach(galleryId => {
                                 const gData = galleriesFromServer[galleryId];
+                                if (typeof gData !== 'object' || gData === null) {
+                                     console.warn(`Nieprawidłowe dane dla galerii ${galleryId} w modelu ${modelNameOriginal}, pomijam.`);
+                                     return;
+                                }
                                 let galleryLi = document.getElementById('gallery_li_' + galleryId);
                                 if (!galleryLi) {
                                     galleryLi = document.createElement('li');
@@ -482,38 +518,42 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                                     nestedUl.appendChild(galleryLi);
                                 }
                                 updateGalleryUI(galleryId, gData.downloaded, gData.expected, null, gData.title, gData.url, gData.folder);
-                                if (galleryId === activeGalleryIdForUI && statusDiv.style.backgroundColor.includes('e0f7fa')) { 
+                                if (galleryId === activeGalleryIdForUI && statusDiv && statusDiv.style.backgroundColor.includes('e0f7fa')) { 
                                      galleryLi.classList.add('processing');
                                 } else {
                                      galleryLi.classList.remove('processing');
                                 }
                             });
-                             nestedUl.dataset.galleriesLoadedOnce = "true"; // Oznacz, że galerie dla tego UL zostały załadowane przynajmniej raz
+                             nestedUl.dataset.galleriesLoadedOnce = "true"; 
                         }
                     });
                     
-                    // Usuń loader, jeśli istnieje po przetworzeniu wszystkich modeli
                     const loaderLiFinal = modelTreeUl.querySelector('.loader');
                     if (loaderLiFinal) {
                         loaderLiFinal.remove();
-                        console.log("Usunięto loader (finalnie)."); // DODANO LOG
+                        console.log("Usunięto loader (finalnie)."); 
                     }
 
-
-                    console.log("Dane agregatu modeli zaktualizowane na stronie."); // ZMIENIONO LOG
+                    console.log("Dane agregatu modeli zaktualizowane na stronie."); 
                     const lastUpdateSpan = document.getElementById("last-aggregate-update-time");
                     if(lastUpdateSpan) {
                         const now = new Date();
                         lastUpdateSpan.textContent = `(Dane z DB: ${now.toLocaleTimeString()})`;
                     }
                 } else {
-                     console.error("Brak obiektu 'models' w odpowiedzi z get_aggregate lub aggregateData jest puste/null po sprawdzeniu."); // DODANO
-                     if(forceFullRender) modelTreeUl.innerHTML = '<li>Brak danych modeli lub nieprawidłowa odpowiedź z API. (force render)</li>'; // DODANO
+                     console.error("Brak obiektu 'models' w odpowiedzi z get_aggregate lub aggregateData jest niepoprawne. Odpowiedź:", aggregateData);
+                     if(forceFullRender) modelTreeUl.innerHTML = '<li>Brak danych modeli lub nieprawidłowa odpowiedź z API. (force render)</li>'; 
                 }
             })
             .catch(error => {
                  console.error("Błąd odświeżania agregatu modeli (catch):", error); 
-                 if(forceFullRender) modelTreeUl.innerHTML = '<li>Wystąpił błąd podczas ładowania danych modeli. Sprawdź konsolę. (catch)</li>';  
+                 // Nie czyść modelTreeUl tutaj, jeśli już coś wyświetla, chyba że to forceFullRender
+                 if(forceFullRender) modelTreeUl.innerHTML = '<li>Wystąpił błąd podczas ładowania danych modeli. Sprawdź konsolę. (catch)</li>';
+                 // Jeśli statusDiv jest dostępny, można tu też wyświetlić błąd
+                 if (statusDiv) { // Sprawdź, czy statusDiv jest zdefiniowany
+                    statusDiv.textContent = 'Błąd ładowania danych modeli: ' + error.message;
+                    statusDiv.style.backgroundColor = '#ffcdd2';
+                 }
             });
     }
 
