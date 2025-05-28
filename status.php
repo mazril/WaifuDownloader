@@ -117,15 +117,14 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
     let activeModelNameSanitizedForUI = null;
     let aggregateRefreshTimeout = null;
 
-    // Funkcja sanitize_foldername z utils.js (lub zaimplementowana tutaj jeśli utils.js nie jest globalne)
     function pySanitizeForQuerySelector(name) {
         if (typeof name !== 'string') name = String(name);
         let sanitized = name.trim();
         sanitized = sanitized.replace(/[<>:"\/\\|?*\x00-\x1F\t\n\r\f\v]/g, '_');
-        sanitized = sanitized.replace(/\s+/g, '_'); // Spacje na podkreślenia dla ID
-        sanitized = sanitized.replace(/[^a-zA-Z0-9_.-]/g, ''); // Usuń niebezpieczne znaki
+        sanitized = sanitized.replace(/\s+/g, '_'); 
+        sanitized = sanitized.replace(/[^a-zA-Z0-9_.-]/g, ''); 
         sanitized = sanitized.trim('_.-');
-        if (sanitized.length > 100) sanitized = sanitized.substring(0, 100); // Ogranicz długość
+        if (sanitized.length > 100) sanitized = sanitized.substring(0, 100); 
         return sanitized ? sanitized : "fallback_sanitized_name";
     }
 
@@ -155,7 +154,7 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                 console.log("Odpowiedź API (prioritize):", data);
                 if (data.success) {
                     showToast(`${data.message || 'Dodano do kolejki priorytetowej.'}`);
-                    fetchAndDisplayQueue(); // Odśwież widok kolejki
+                    fetchAndDisplayQueue(); 
                 } else {
                     showToast(`Błąd: ${data.message || 'Nie udało się dodać do kolejki.'}`, true);
                 }
@@ -184,7 +183,7 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                 statusSpan.textContent = '';
                 if (data.success) {
                     modelNameInput.value = '';
-                    fetchAggregateDataAndUpdateModels(true); // Odśwież listę modeli
+                    fetchAggregateDataAndUpdateModels(true); 
                 }
             })
             .catch(error => {
@@ -242,11 +241,11 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
         if (expectedText !== '?') {
             if (expectedVal > 0) {
                  progress = (currentDownloadedVal / expectedVal * 100);
-            } else if (expectedVal === 0 && currentDownloadedVal === 0) { // Ukończona pusta galeria
+            } else if (expectedVal === 0 && currentDownloadedVal === 0) { 
                 progress = 100;
             }
             colorClass = (progress >= 100 || (expectedVal === 0 && currentDownloadedVal === 0)) ? 'green' : (currentDownloadedVal > 0 ? 'orange' : 'red');
-        } else { // Oczekiwana liczba nieznana
+        } else { 
             colorClass = currentDownloadedVal > 0 ? 'orange' : 'red';
             statusText = `D: ${currentDownloadedVal}/?`;
         }
@@ -271,13 +270,13 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
             .then(data => {
                 if (!data || typeof data.timestamp === 'undefined') {
                    statusDiv.textContent = 'Oczekiwanie na status ze skryptu Python...';
-                   statusDiv.style.backgroundColor = '#fff8dc'; // Kremowy
+                   statusDiv.style.backgroundColor = '#fff8dc'; 
                    return;
                 }
                 statusDiv.textContent = '[' + data.timestamp + '] ' + data.message +
                                         (data.current_model ? ' | Model: ' + data.current_model : '') +
                                         (data.current_gallery_title ? ' | Galeria: ' + data.current_gallery_title : '');
-                statusDiv.style.backgroundColor = data.is_processing ? '#e0f7fa' : '#fff'; // Jasnoniebieski / biały
+                statusDiv.style.backgroundColor = data.is_processing ? '#e0f7fa' : '#fff'; 
 
                 const galleryThatWasProcessing = activeGalleryIdForUI;
                 const modelSanitizedThatWasProcessing = activeModelNameSanitizedForUI;
@@ -285,16 +284,14 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                 const currentProcessingModelOriginal = data.current_model;
                 const currentProcessingModelSanitized = currentProcessingModelOriginal ? pySanitizeForQuerySelector(currentProcessingModelOriginal) : null;
 
-                // Usuń klasę 'model-processing' z poprzednio przetwarzanego modelu, jeśli inny
                 if (modelSanitizedThatWasProcessing && modelSanitizedThatWasProcessing !== currentProcessingModelSanitized) {
                     const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
                     if (oldModelLi) oldModelLi.classList.remove('model-processing');
                 }
-                // Dodaj klasę 'model-processing' do aktualnie przetwarzanego modelu
                 if (currentProcessingModelSanitized) {
                     const currentModelLi = document.querySelector(`.model-li[data-model-name="${currentProcessingModelSanitized}"]`);
                     if (currentModelLi) {
-                        currentModelLi.classList.remove('model-complete', 'model-partial'); // Usuń inne statusy
+                        currentModelLi.classList.remove('model-complete', 'model-partial'); 
                         currentModelLi.classList.add('model-processing');
                     }
                 }
@@ -303,16 +300,13 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
 
                 if (data.is_processing && data.current_gallery_id) {
                     activeGalleryIdForUI = data.current_gallery_id;
-                    // Usuń klasę 'processing' z poprzednio przetwarzanej galerii, jeśli inna
                     if (galleryThatWasProcessing && galleryThatWasProcessing !== activeGalleryIdForUI) {
                         const prevGalleryLi = document.getElementById('gallery_li_' + galleryThatWasProcessing);
                         if (prevGalleryLi) prevGalleryLi.classList.remove('processing');
                     }
-                    // Dodaj klasę 'processing' do aktualnie przetwarzanej galerii
                     const currentGalleryLi = document.getElementById('gallery_li_' + activeGalleryIdForUI);
                     if (currentGalleryLi) {
                          currentGalleryLi.classList.add('processing');
-                         // Otwórz nadrzędny model, jeśli nie jest otwarty
                          const parentModelLi = currentGalleryLi.closest('li.model-li');
                          if(parentModelLi){
                              const nestedUl = parentModelLi.querySelector('ul.nested');
@@ -323,52 +317,62 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                              }
                          }
                     }
-                    // Zaktualizuj UI dla tej galerii
                     updateGalleryUI(activeGalleryIdForUI, data.current_download_count, data.current_expected_count, data.scan_session_found_count);
                 
-                } else if (!data.is_processing && galleryThatWasProcessing) { // Zakończono przetwarzanie poprzedniej galerii
+                } else if (!data.is_processing && galleryThatWasProcessing) { 
                     console.log(`Galeria ${galleryThatWasProcessing} zakończyła przetwarzanie. Finalna aktualizacja UI.`);
                     const finishedGalleryLi = document.getElementById('gallery_li_' + galleryThatWasProcessing);
                     if (finishedGalleryLi) finishedGalleryLi.classList.remove('processing');
-                    // Zaktualizuj UI, ale bez scan_session_found_count (bo to koniec przetwarzania)
                     updateGalleryUI(galleryThatWasProcessing, data.current_download_count, data.current_expected_count, null);
                     activeGalleryIdForUI = null; 
-                    triggerDelayedAggregateRefresh(); // Odśwież dane zbiorcze po chwili
+                    triggerDelayedAggregateRefresh(); 
                 } else if (!data.is_processing && modelSanitizedThatWasProcessing && !currentProcessingModelSanitized) {
-                    // Zakończono przetwarzanie całego modelu
                     const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
                     if (oldModelLi) oldModelLi.classList.remove('model-processing');
                     activeModelNameSanitizedForUI = null;
                     triggerDelayedAggregateRefresh();
                 }
-
-
             })
-            .catch(error => { console.error("Błąd odświeżania statusu:", error); statusDiv.textContent = 'Błąd odświeżania statusu: ' + error.message; statusDiv.style.backgroundColor = '#ffcdd2'; }); // Jasnoczerwony
+            .catch(error => { console.error("Błąd odświeżania statusu:", error); statusDiv.textContent = 'Błąd odświeżania statusu: ' + error.message; statusDiv.style.backgroundColor = '#ffcdd2'; }); 
     }
 
-    function triggerDelayedAggregateRefresh(delay = 2500) { // Zwiększony delay
+    function triggerDelayedAggregateRefresh(delay = 2500) { 
         if (aggregateRefreshTimeout) clearTimeout(aggregateRefreshTimeout);
         console.log(`Planuję odświeżenie agregatu za ${delay}ms.`);
         aggregateRefreshTimeout = setTimeout(() => {
             console.log("Uruchamiam odświeżanie danych agregatu modeli...");
-            fetchAggregateDataAndUpdateModels(false); // false - nie wymuszaj ponownego renderowania całej listy
+            fetchAggregateDataAndUpdateModels(false); 
         }, delay);
     }
 
     function fetchAggregateDataAndUpdateModels(forceFullRender = false) {
+        console.log(`fetchAggregateDataAndUpdateModels wywołane. forceFullRender: ${forceFullRender}`); // DODANO LOG
         fetch(`${API_URL}?action=get_aggregate&_=${new Date().getTime()}`)
             .then(response => {
-                if (!response.ok) throw new Error('HTTP error! status: ' + response.status);
+                if (!response.ok) throw new Error('HTTP error! status: ' + response.status + ', text: ' + response.statusText); // DODANO response.statusText
                 return response.json();
             })
             .then(aggregateData => {
+                console.log("Odpowiedź z get_aggregate:", JSON.stringify(aggregateData, null, 2)); // DODANO LOG
                 if (aggregateData && aggregateData.models) {
-                    console.log("Otrzymano dane agregatu.");
+                    console.log("Otrzymano dane agregatu. Liczba modeli:", Object.keys(aggregateData.models).length); 
                     const modelsData = aggregateData.models;
                     const modelNamesSorted = Object.keys(modelsData).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
-                    if(forceFullRender) modelTreeUl.innerHTML = ''; // Wyczyść tylko przy pełnym renderowaniu
+                    if(forceFullRender) { // DODANO warunek
+                        modelTreeUl.innerHTML = ''; 
+                        console.log("Wyczyszczono modelTreeUl z powodu forceFullRender."); // DODANO LOG
+                    }
+                    
+                    if (modelNamesSorted.length === 0 && forceFullRender) { // Przeniesiono i zmodyfikowano warunek
+                         modelTreeUl.innerHTML = '<li>Brak modeli na liście lub w bazie danych. Dodaj modelki do pliku `lista.txt` i uruchom skrypt Python, następnie odśwież.</li>';
+                         console.log("Wyświetlono komunikat o braku modeli."); // DODANO LOG
+                         return; // Zakończ, jeśli nie ma modeli
+                    } else if (forceFullRender && modelTreeUl.querySelector('.loader')) { // Usuń loader tylko jeśli był pełny render
+                         modelTreeUl.querySelector('.loader').remove();
+                         console.log("Usunięto loader."); // DODANO LOG
+                    }
+
 
                     modelNamesSorted.forEach(modelNameOriginal => {
                         const modelData = modelsData[modelNameOriginal];
@@ -376,38 +380,48 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                         let modelLiElement = document.querySelector(`.model-li[data-model-name="${sanitizedModelName}"]`);
                         let nestedUl;
 
-                        if (!modelLiElement) { // Tworzymy LI dla modelu, jeśli nie istnieje
+                        if (!modelLiElement) { 
                             modelLiElement = document.createElement('li');
                             modelLiElement.className = 'model-li';
                             modelLiElement.dataset.modelName = sanitizedModelName;
                             
                             const modelHeader = document.createElement('div');
                             modelHeader.className = 'model-header';
+                            // Używaj htmlspecialchars dla danych wyświetlanych w HTML, ale nie dla parametrów JS
+                            const escapedModelName = modelNameOriginal.replace(/'/g, "\\'");
                             modelHeader.innerHTML = `
                                 <span class="toggle">+</span>
                                 <span class="model-name">${modelNameOriginal}</span>
                                 <div class="progress-bar-container">
                                     <div class="progress-bar"></div>
                                 </div>
-                                <button class="btn-action" onclick="prioritizeItem('scan_model', '${modelNameOriginal.replace(/'/g, "\\'")}')" title="Skanuj, aktualizuj i dodaj brakujące galerie do kolejki pobierania">Uzupełnij Model</button>
-                                <button class="btn-action" onclick="prioritizeItem('scan_model_refresh_only', '${modelNameOriginal.replace(/'/g, "\\'")}')" title="Tylko skanuj i aktualizuj opisy/liczniki (bez dodawania do kolejki pobierania)">Odśwież Opisy</button>
+                                <button class="btn-action" onclick="prioritizeItem('scan_model', '${escapedModelName}')" title="Skanuj, aktualizuj i dodaj brakujące galerie do kolejki pobierania">Uzupełnij Model</button>
+                                <button class="btn-action" onclick="prioritizeItem('scan_model_refresh_only', '${escapedModelName}')" title="Tylko skanuj i aktualizuj opisy/liczniki (bez dodawania do kolejki pobierania)">Odśwież Opisy</button>
                             `;
                             nestedUl = document.createElement('ul');
                             nestedUl.className = 'nested';
                             modelLiElement.appendChild(modelHeader);
                             modelLiElement.appendChild(nestedUl);
-                            modelTreeUl.appendChild(modelLiElement);
+                            
+                            // Znajdź loader i wstaw przed nim, lub na końcu jeśli nie ma
+                            const loaderLi = modelTreeUl.querySelector('.loader');
+                            if(loaderLi) modelTreeUl.insertBefore(modelLiElement, loaderLi);
+                            else modelTreeUl.appendChild(modelLiElement);
 
                             modelHeader.querySelector('.toggle').addEventListener('click', function() {
                                 nestedUl.classList.toggle('active');
                                 this.textContent = nestedUl.classList.contains('active') ? '−' : '+';
-                                if (nestedUl.classList.contains('active')) fetchAggregateDataAndUpdateModels(false); // Odśwież przy rozwijaniu
+                                if (nestedUl.classList.contains('active')) {
+                                    console.log(`Rozwinięto model ${modelNameOriginal}. Ładuję galerie...`); // DODANO LOG
+                                    fetchAggregateDataAndUpdateModels(false); 
+                                }
                             });
+                            console.log("Utworzono nowy LI dla modelu:", modelNameOriginal); // DODANO LOG
                         } else {
                             nestedUl = modelLiElement.querySelector('ul.nested');
+                            console.log("Znaleziono istniejący LI dla modelu:", modelNameOriginal); // DODANO LOG
                         }
 
-                        // Aktualizacja nagłówka modelu (nazwa, progress)
                         const completedInModel = modelData.completed_galleries || 0;
                         const totalInModel = modelData.total_galleries || 0;
                         const modelProgressPercent = modelData.model_progress || 0;
@@ -423,14 +437,17 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                              modelLiElement.classList.add('model-processing');
                         } else if (totalInModel > 0 && completedInModel === totalInModel) {
                             modelLiElement.classList.add('model-complete');
-                        } else if (completedInModel > 0 || (totalInModel > 0 && completedInModel < totalInModel)) { // Lub jeśli jest jakikolwiek postęp
+                        } else if (completedInModel > 0 || (totalInModel > 0 && completedInModel < totalInModel)) { 
                             modelLiElement.classList.add('model-partial');
                         }
 
-
-                        // Aktualizacja lub tworzenie galerii, jeśli UL jest aktywny lub pełne renderowanie
                         if (nestedUl.classList.contains('active') || forceFullRender) {
-                            if(forceFullRender || !nestedUl.dataset.galleriesLoaded) nestedUl.innerHTML = ''; // Wyczyść galerie tylko przy pełnym renderowaniu lub pierwszym ładowaniu rozwiniętego
+                             console.log(`Aktualizuję galerie dla ${modelNameOriginal} (aktywny: ${nestedUl.classList.contains('active')}, force: ${forceFullRender})`); // DODANO LOG
+                            // if(forceFullRender || !nestedUl.dataset.galleriesLoaded) { // Zmieniono warunek czyszczenia
+                            if(forceFullRender || (nestedUl.classList.contains('active') && !nestedUl.dataset.galleriesLoadedOnce)) {
+                                nestedUl.innerHTML = ''; 
+                                console.log(`Wyczyszczono galerie dla ${modelNameOriginal}.`); // DODANO LOG
+                            }
                             
                             const galleriesFromServer = modelData.galleries || {};
                             const galleryIdsSorted = Object.keys(galleriesFromServer).sort((a,b) => {
@@ -446,10 +463,11 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                                     galleryLi = document.createElement('li');
                                     galleryLi.className = 'gallery-li';
                                     galleryLi.id = 'gallery_li_' + galleryId;
+                                    const escapedGalleryId = galleryId.replace(/'/g, "\\'");
                                     galleryLi.innerHTML = `
                                         <span class="gallery-link">
                                             <span class="spinner"></span>
-                                            <a href="${gData.url}" target="_blank" title="Folder: ${gData.folder || 'Brak'}">${gData.title}</a>
+                                            <a href="${gData.url || '#'}" target="_blank" title="Folder: ${gData.folder || 'Brak'}">${gData.title || galleryId}</a>
                                         </span>
                                         <div class="gallery-controls">
                                             <span class="newly-found-count"></span>
@@ -457,59 +475,61 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                                                 <div class="progress-bar"></div>
                                             </div>
                                             <span class="gallery-status"></span>
-                                            <button class="btn-action" onclick="prioritizeItem('gallery', '${galleryId.replace(/'/g, "\\'")}')" title="Uzupełnij tę galerię priorytetowo">Uzupełnij</button>
-                                            <a href="${gData.url}" target="_blank" class="btn-action" title="Otwórz stronę źródłową galerii">Źródło</a>
+                                            <button class="btn-action" onclick="prioritizeItem('gallery', '${escapedGalleryId}')" title="Uzupełnij tę galerię priorytetowo">Uzupełnij</button>
+                                            <a href="${gData.url || '#'}" target="_blank" class="btn-action" title="Otwórz stronę źródłową galerii">Źródło</a>
                                         </div>
                                     `;
                                     nestedUl.appendChild(galleryLi);
                                 }
-                                // Aktualizuj UI dla tej galerii z nowymi danymi
                                 updateGalleryUI(galleryId, gData.downloaded, gData.expected, null, gData.title, gData.url, gData.folder);
-                                if (galleryId === activeGalleryIdForUI && statusDiv.style.backgroundColor.includes('e0f7fa')) { // Jeśli przetwarzana
+                                if (galleryId === activeGalleryIdForUI && statusDiv.style.backgroundColor.includes('e0f7fa')) { 
                                      galleryLi.classList.add('processing');
                                 } else {
                                      galleryLi.classList.remove('processing');
                                 }
                             });
-                             nestedUl.dataset.galleriesLoaded = "true";
+                             nestedUl.dataset.galleriesLoadedOnce = "true"; // Oznacz, że galerie dla tego UL zostały załadowane przynajmniej raz
                         }
                     });
-                     if(forceFullRender && modelNamesSorted.length === 0) {
-                         modelTreeUl.innerHTML = '<li>Brak modeli na liście lub w bazie danych. Dodaj modelki do pliku `lista.txt` i uruchom skrypt Python.</li>';
-                     } else if (forceFullRender && modelTreeUl.querySelector('.loader')) {
-                         modelTreeUl.querySelector('.loader').remove();
-                     }
+                    
+                    // Usuń loader, jeśli istnieje po przetworzeniu wszystkich modeli
+                    const loaderLiFinal = modelTreeUl.querySelector('.loader');
+                    if (loaderLiFinal) {
+                        loaderLiFinal.remove();
+                        console.log("Usunięto loader (finalnie)."); // DODANO LOG
+                    }
 
 
-                    console.log("Dane agregatu modeli zaktualizowane.");
+                    console.log("Dane agregatu modeli zaktualizowane na stronie."); // ZMIENIONO LOG
                     const lastUpdateSpan = document.getElementById("last-aggregate-update-time");
                     if(lastUpdateSpan) {
                         const now = new Date();
                         lastUpdateSpan.textContent = `(Dane z DB: ${now.toLocaleTimeString()})`;
                     }
+                } else {
+                     console.error("Brak obiektu 'models' w odpowiedzi z get_aggregate lub aggregateData jest puste/null po sprawdzeniu."); // DODANO
+                     if(forceFullRender) modelTreeUl.innerHTML = '<li>Brak danych modeli lub nieprawidłowa odpowiedź z API. (force render)</li>'; // DODANO
                 }
             })
             .catch(error => {
-                 console.error("Błąd odświeżania agregatu modeli:", error);
-                 modelTreeUl.innerHTML = '<li>Wystąpił błąd podczas ładowania danych modeli. Sprawdź konsolę.</li>';
+                 console.error("Błąd odświeżania agregatu modeli (catch):", error); 
+                 if(forceFullRender) modelTreeUl.innerHTML = '<li>Wystąpił błąd podczas ładowania danych modeli. Sprawdź konsolę. (catch)</li>';  
             });
     }
 
 
     document.addEventListener('DOMContentLoaded', function() {
-        // Usunięto iterację po .toggle, bo lista modeli jest dynamiczna
-        updateStatus(); // Pierwsze pobranie statusu
-        fetchAggregateDataAndUpdateModels(true); // Pierwsze pobranie i renderowanie listy modeli
-        fetchAndDisplayQueue(); // Pierwsze pobranie kolejki
+        updateStatus(); 
+        fetchAggregateDataAndUpdateModels(true); 
+        fetchAndDisplayQueue(); 
 
-        setInterval(updateStatus, 2800); // Regularne odświeżanie statusu
-        setInterval(() => fetchAggregateDataAndUpdateModels(false), 25000); // Regularne odświeżanie agregatu w tle
-        setInterval(fetchAndDisplayQueue, 30000); // Okresowe odświeżanie kolejki w modalu
+        setInterval(updateStatus, 2800); 
+        setInterval(() => fetchAggregateDataAndUpdateModels(false), 25000); 
+        setInterval(fetchAndDisplayQueue, 30000); 
     });
 
-    // --- Zarządzanie Kolejką (pozostaje bez większych zmian, korzysta z globalnej API_URL) ---
     let draggedItem = null;
-    let queueDataCache = []; // Lokalny cache kolejki dla UI
+    let queueDataCache = []; 
 
     function getQueueItemDisplay(item) {
         let display = `Typ: ${item.type}`;
@@ -526,9 +546,9 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
     }
 
     function populateQueueList(queue) {
-        queueDataCache = queue; // Zaktualizuj lokalny cache
+        queueDataCache = queue; 
         const list = document.getElementById('priority-queue-list');
-        list.innerHTML = ''; // Wyczyść listę
+        list.innerHTML = ''; 
         if (queue.length === 0) {
             list.innerHTML = '<li>Kolejka jest pusta.</li>';
         } else {
@@ -536,7 +556,7 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                 const li = document.createElement('li');
                 li.className = 'queue-item';
                 li.draggable = true;
-                li.dataset.index = index; // Użyj indeksu do identyfikacji
+                li.dataset.index = index; 
 
                 li.addEventListener('dragstart', handleDragStart);
                 li.addEventListener('dragover', handleDragOver);
@@ -558,8 +578,8 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                 const removeBtn = document.createElement('button');
                 removeBtn.textContent = 'Usuń';
                 removeBtn.onclick = () => {
-                    queueDataCache.splice(index, 1); // Usuń z lokalnego cache
-                    populateQueueList(queueDataCache); // Przerenderuj listę z cache
+                    queueDataCache.splice(index, 1); 
+                    populateQueueList(queueDataCache); 
                     updateQueueCount();
                 };
                 controls.appendChild(removeBtn);
@@ -575,7 +595,7 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
     }
 
     function handleDragStart(e) {
-        draggedItem = e.target.closest('.queue-item'); // Upewnij się, że to LI
+        draggedItem = e.target.closest('.queue-item'); 
         if (!draggedItem) return;
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', draggedItem.dataset.index);
@@ -601,7 +621,7 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
             const [movedItem] = queueDataCache.splice(fromIndex, 1);
             queueDataCache.splice(toIndex, 0, movedItem);
 
-            populateQueueList(queueDataCache); // Przerenderuj z zaktualizowanym cache
+            populateQueueList(queueDataCache); 
         }
         document.querySelectorAll('.queue-item.over').forEach(it => it.classList.remove('over'));
     }
@@ -621,18 +641,18 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
             .catch(error => {
                 console.error("Błąd pobierania kolejki:", error);
                 document.getElementById('priority-queue-list').innerHTML = '<li>Błąd ładowania kolejki.</li>';
-                updateQueueCount(); // Zaktualizuj licznik nawet przy błędzie
+                updateQueueCount(); 
             });
     }
 
     function openQueueModal() {
         document.getElementById('queue-modal').style.display = 'block';
-        fetchAndDisplayQueue(); // Zawsze pobierz świeżą listę przy otwarciu
+        fetchAndDisplayQueue(); 
     }
 
     function closeQueueModal() {
         document.getElementById('queue-modal').style.display = 'none';
-        document.getElementById('queue-status').textContent = ''; // Wyczyść status modala
+        document.getElementById('queue-status').textContent = ''; 
     }
 
     function saveQueueOrder() {
@@ -643,7 +663,7 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
         fetch(`${API_URL}?action=update_queue`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(queueDataCache) // Wyślij zaktualizowany cache
+            body: JSON.stringify(queueDataCache) 
         })
         .then(response => response.json())
         .then(data => {
@@ -657,7 +677,7 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
                 showToast(`Błąd zapisu kolejki: ${data.message || 'Nieznany błąd.'}`, true);
             }
             setTimeout(() => { statusSpan.textContent = ''; }, 3000);
-            updateQueueCount(); // Zaktualizuj licznik (na wypadek gdyby serwer inaczej przetworzył)
+            updateQueueCount(); 
         })
         .catch(error => {
             console.error('Błąd zapisu kolejki:', error);
@@ -667,7 +687,6 @@ $aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane
         });
     }
 
-    // Zamknięcie modala po kliknięciu poza nim
     window.onclick = function(event) {
         const modal = document.getElementById('queue-modal');
         if (event.target == modal) {
