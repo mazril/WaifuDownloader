@@ -2289,3 +2289,285 @@ Title:
 2025-05-28 18:49:56,836 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
 2025-05-28 18:49:56,836 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
 2025-05-28 18:49:56,838 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Pobrano 20 (20)...
+2025-05-28 20:22:21,141 [INFO    ] [root                :  46] Logowanie do pliku skonfigurowane: D:\Projekt\Downloadery\WaifuDownloaderGemini\script.log
+2025-05-28 20:22:21,141 [INFO    ] [root                :  51] Poprawnie zainicjowano system logowania.
+2025-05-28 20:22:21,143 [INFO    ] [__main__            :  72] Ustawiam obsługę sygnałów (SIGINT, SIGTERM)...
+2025-05-28 20:22:21,143 [INFO    ] [config_handler      :  78] Wykryto zmianę w config.json lub wymuszono przeładowanie. Przeładowuję... (force=True, changed=False)
+2025-05-28 20:22:21,243 [INFO    ] [config_handler      : 105] Konfiguracja załadowana/zaktualizowana. (mtime: 1748417020.2448)
+2025-05-28 20:22:21,244 [DEBUG   ] [db_manager          :  44] Pula połączeń już istnieje i działa.
+2025-05-28 20:22:21,244 [DEBUG   ] [db_manager          :  44] Pula połączeń już istnieje i działa.
+2025-05-28 20:22:21,244 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5942 z puli.
+2025-05-28 20:22:21,247 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 20:22:21,247 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:21,247 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Skrypt uruchomiony, inicjalizacja DB...
+2025-05-28 20:22:21,247 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5938 z puli.
+2025-05-28 20:22:21,247 [DEBUG   ] [db_manager          :  99] Zapytanie wykonane (fetch_one). Zwrócono: Dane
+2025-05-28 20:22:21,249 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:21,249 [INFO    ] [__main__            : 142] Wykryto operację ('process_models') do wznowienia. Kontynuuję automatycznie.
+2025-05-28 20:22:21,249 [INFO    ] [__main__            : 157] Wznawiam operację: process_models z parametrami: {'start_model_index': 0, 'check_mode': 'all_or_incomplete'}
+2025-05-28 20:22:21,249 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:21,249 [DEBUG   ] [__main__            : 164] ML: Sprawdzam kolejkę priorytetową (DB)...
+2025-05-28 20:22:21,249 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5939 z puli.
+2025-05-28 20:22:21,249 [DEBUG   ] [db_manager          : 103] Zapytanie wykonane (fetch_all). Zwrócono: 0 wierszy.
+2025-05-28 20:22:21,249 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:21,249 [INFO    ] [__main__            : 191] ML: Uruchamiam operację 'process_models' param: {'start_model_index': 0, 'check_mode': 'all_or_incomplete'}
+2025-05-28 20:22:21,249 [DEBUG   ] [data_manager        :  84] Odczytywanie listy modelek z bazy danych...
+2025-05-28 20:22:21,251 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5940 z puli.
+2025-05-28 20:22:21,251 [DEBUG   ] [db_manager          : 103] Zapytanie wykonane (fetch_all). Zwrócono: 98 wierszy.
+2025-05-28 20:22:21,251 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:21,251 [INFO    ] [data_manager        :  89] Pobrano 98 modelek z bazy danych.
+2025-05-28 20:22:21,251 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:21,251 [INFO    ] [processing          : 765] Rozpoczynam handle_process_models. Tryb: all_or_incomplete. Próg VPN: 30 galerii.
+2025-05-28 20:22:21,253 [INFO    ] [driver_utils        :  94] Próba uruchomienia przeglądarki (1/3)...
+2025-05-28 20:22:21,253 [DEBUG   ] [driver_utils        :  47] Rozpoczynam tworzenie instancji drivera w wątku (AdBlock: D:\Projekt\Downloadery\WaifuDownloaderGemini\uBlock0.chromium.ext.crx)
+2025-05-28 20:22:21,253 [INFO    ] [driver_utils        :  63] Dodano opcje Chrome: --disable-background-*, --disable-features=VisibilityAwarePageOcclusion itp.
+2025-05-28 20:22:21,255 [WARNING ] [driver_utils        :  70] Nie znaleziono rozszerzenia AdBlock w: D:\Projekt\Downloadery\WaifuDownloaderGemini\uBlock0.chromium.ext.crx
+2025-05-28 20:22:21,255 [INFO    ] [driver_utils        :  72] Uruchamiam uc.Chrome()...
+2025-05-28 20:22:24,576 [INFO    ] [driver_utils        :  74] Instancja uc.Chrome() uruchomiona. Sprawdzam responsywność...
+2025-05-28 20:22:24,583 [INFO    ] [driver_utils        :  76] Przeglądarka responsywna.
+2025-05-28 20:22:24,583 [DEBUG   ] [driver_utils        :  82] AdBlock niezaładowany, krótka pauza (2s).
+2025-05-28 20:22:26,584 [INFO    ] [driver_utils        :  85] Przeglądarka gotowa.
+2025-05-28 20:22:26,584 [INFO    ] [driver_utils        : 126] Przeglądarka uruchomiona pomyślnie!
+2025-05-28 20:22:26,585 [INFO    ] [services            : 142] Rozpoczynam ładowanie modelu AI: google/flan-t5-large...
+2025-05-28 20:22:27,042 [INFO    ] [services            : 146] AI będzie używać urządzenia: cuda
+2025-05-28 20:22:29,821 [INFO    ] [services            : 160] Model AI 'google/flan-t5-large' załadowany pomyślnie na urządzeniu 'cuda'.
+2025-05-28 20:22:29,821 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5941 z puli.
+2025-05-28 20:22:29,823 [DEBUG   ] [db_manager          :  99] Zapytanie wykonane (fetch_one). Zwrócono: Dane
+2025-05-28 20:22:29,824 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,824 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5942 z puli.
+2025-05-28 20:22:29,826 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 20:22:29,826 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,826 [DEBUG   ] [data_manager        :  79] Zaktualizowano indeks ostatnio przetworzonego modelu na: 0 (DB)
+2025-05-28 20:22:29,826 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:29,826 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5938 z puli.
+2025-05-28 20:22:29,827 [DEBUG   ] [db_manager          : 103] Zapytanie wykonane (fetch_all). Zwrócono: 0 wierszy.
+2025-05-28 20:22:29,827 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,827 [INFO    ] [processing          : 811] === PRZETWARZANIE MODELKI: Aery-Tiefling (1/98) ===
+2025-05-28 20:22:29,828 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5939 z puli.
+2025-05-28 20:22:29,829 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 20:22:29,829 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,829 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Przetwarzanie modelu (all_or_incomplete)
+2025-05-28 20:22:29,830 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5940 z puli.
+2025-05-28 20:22:29,831 [DEBUG   ] [db_manager          :  99] Zapytanie wykonane (fetch_one). Zwrócono: Dane
+2025-05-28 20:22:29,831 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,831 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5941 z puli.
+2025-05-28 20:22:29,833 [DEBUG   ] [db_manager          : 103] Zapytanie wykonane (fetch_all). Zwrócono: 136 wierszy.
+2025-05-28 20:22:29,833 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,833 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5942 z puli.
+2025-05-28 20:22:29,835 [DEBUG   ] [db_manager          : 103] Zapytanie wykonane (fetch_all). Zwrócono: 136 wierszy.
+2025-05-28 20:22:29,835 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,835 [INFO    ] [processing          : 836] Znaleziono 136 galerii do przetworzenia dla Aery-Tiefling w trybie 'all_or_incomplete'.
+2025-05-28 20:22:29,835 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5938 z puli.
+2025-05-28 20:22:29,836 [DEBUG   ] [db_manager          : 103] Zapytanie wykonane (fetch_all). Zwrócono: 0 wierszy.
+2025-05-28 20:22:29,836 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,836 [INFO    ] [processing          : 848]   Przetwarzanie galerii: Aery Tiefling (ID: 97629)
+2025-05-28 20:22:29,837 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:29,837 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5939 z puli.
+2025-05-28 20:22:29,837 [DEBUG   ] [db_manager          :  99] Zapytanie wykonane (fetch_one). Zwrócono: Dane
+2025-05-28 20:22:29,838 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,838 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5940 z puli.
+2025-05-28 20:22:29,838 [DEBUG   ] [db_manager          :  99] Zapytanie wykonane (fetch_one). Zwrócono: Dane
+2025-05-28 20:22:29,839 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,839 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5941 z puli.
+2025-05-28 20:22:29,840 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 20:22:29,841 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:29,841 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Przygotowanie galerii...
+2025-05-28 20:22:29,841 [INFO    ] [driver_utils        : 205] Przechodzę do: https://waifubitches.com/gallery/97629
+2025-05-28 20:22:32,206 [DEBUG   ] [driver_utils        : 209] Pauza po driver.get: 5.92s
+2025-05-28 20:22:38,206 [INFO    ] [processing          : 187] Dla galerii 97629, page_js_title: 'None', original_title z DB (scan): 'Aery Tiefling - Marcille Donato ...'
+2025-05-28 20:22:38,206 [INFO    ] [processing          : 198] Nie udało się pobrać page_js_title lub jest pusty dla galerii 97629. Używam original_title z DB: 'Aery Tiefling - Marcille Donato ...'
+2025-05-28 20:22:38,265 [INFO    ] [processing          : 151] Znaleziono tagi cosplay: ['Marcille Donato', 'Marcille Donato']
+2025-05-28 20:22:38,265 [INFO    ] [processing          : 152] Znaleziono tagi fandom: ['Dungeon Meshi', 'Dungeon Meshi']
+2025-05-28 20:22:38,266 [DEBUG   ] [services            : 130] Model AI jest już zainicjalizowany.
+2025-05-28 20:22:38,266 [INFO    ] [processing          : 213] Przekazuję do AI dla galerii 97629: "Aery Tiefling - Marcille Donato ...", neg: ["Aery-Tiefling"], hints: ['Marcille Donato', 'Dungeon Meshi']
+2025-05-28 20:22:38,266 [DEBUG   ] [services            : 202] Używam pozytywnych wskazówek: If possible and relevant, try to include terms like: 'Marcille Donato', 'Dungeon Meshi' in the title.
+2025-05-28 20:22:38,266 [DEBUG   ] [services            : 203] Używam instrukcji negatywnej: The generated title MUST NOT include any of these specific names or terms: 'Aery-Tiefling'.
+2025-05-28 20:22:38,266 [DEBUG   ] [services            : 204] Pełny prompt dla AI:
+Extract 'Character' and 'Series' from the text. If 'Series' is not obvious or too generic like 'Original', output only 'Character'.
+Example 1: Text: "Victoria Lirell - Princess Zelda - The Legend Of Zelda - 37 photos" Title: Princess Zelda - The Legend Of Zelda
+Example 2: Text: "Shinano by Kokura Chiyo from Azur Lane" Title: Shinano - Azur Lane
+Example 3: Text: "Some Artist - Just A Character - 50 photos" Title: Just A Character
+Example 4: Text: "Cute Girl - Original Character by ArtistX - 22 images" Title: Cute Girl
+Example 5: Text: "My OC Lily - 12 pics" Title: My OC Lily
+If possible and relevant, try to include terms like: 'Marcille Donato', 'Dungeon Meshi' in the title.
+The generated title MUST NOT include any of these specific names or terms: 'Aery-Tiefling'.
+Text: "Aery Tiefling - Marcille Donato ..."
+Title:
+2025-05-28 20:22:39,113 [DEBUG   ] [services            : 219] AI zwróciło surowy tytuł: 'Aery Tiefling'
+2025-05-28 20:22:39,115 [INFO    ] [services            : 269] Tytuł po post-processingu AI: 'Aery Tiefling' (oryginalny AI: 'Aery Tiefling')
+2025-05-28 20:22:39,115 [INFO    ] [processing          : 223] AI ustaliło tytuł dla 97629: "Aery Tiefling" (surowy: "Aery Tiefling")
+2025-05-28 20:22:39,117 [INFO    ] [processing          : 260] Folder galerii: D:\Projekt\Downloadery\WaifuDownloaderGemini\Modelki\Aery-Tiefling\Aery Tiefling_97629
+2025-05-28 20:22:39,117 [INFO    ] [processing          : 271] Sprawdzanie licznika na stronie galerii 97629 (obecny w DB: 56)...
+2025-05-28 20:22:39,128 [WARNING ] [processing          : 288] Brak elementu licznika ('h1 > span.ms-1') na stronie galerii 97629.
+2025-05-28 20:22:39,128 [INFO    ] [processing          : 293] Ostateczny expected_count dla galerii 'Aery Tiefling' (ID: 97629): 56
+2025-05-28 20:22:39,128 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5942 z puli.
+2025-05-28 20:22:39,130 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 20:22:39,130 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:39,130 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Przygotowanie do scrolla
+2025-05-28 20:22:39,130 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:39,130 [INFO    ] [driver_utils        : 239] SUT: Start dla 'div.photo-item a[href]'. Oczekiwane: 56. Tytuł: 'Aery Tiefling'
+2025-05-28 20:22:39,138 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5938 z puli.
+2025-05-28 20:22:39,140 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 20:22:39,140 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:39,140 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Szukanie... (5)
+2025-05-28 20:22:39,140 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:39,216 [DEBUG   ] [driver_utils        : 269] SUT Scroll #1: +318px.
+2025-05-28 20:22:39,594 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.5s (limit: 20.0s). Znaleziono: 5/56.
+2025-05-28 20:22:39,594 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:39,671 [DEBUG   ] [driver_utils        : 269] SUT Scroll #2: +333px.
+2025-05-28 20:22:39,953 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.8s (limit: 20.0s). Znaleziono: 5/56.
+2025-05-28 20:22:39,953 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:40,029 [DEBUG   ] [driver_utils        : 269] SUT Scroll #3: +275px.
+2025-05-28 20:22:40,323 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 1.2s (limit: 20.0s). Znaleziono: 5/56.
+2025-05-28 20:22:40,323 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:40,398 [DEBUG   ] [driver_utils        : 269] SUT Scroll #4: +297px.
+2025-05-28 20:22:40,784 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 1.6s (limit: 20.0s). Znaleziono: 5/56.
+2025-05-28 20:22:40,784 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:40,880 [DEBUG   ] [driver_utils        : 269] SUT Scroll #5: +276px.
+2025-05-28 20:22:41,176 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.0s (limit: 20.0s). Znaleziono: 5/56.
+2025-05-28 20:22:41,176 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:41,249 [DEBUG   ] [driver_utils        : 269] SUT Scroll #6: +324px.
+2025-05-28 20:22:41,641 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.5s (limit: 20.0s). Znaleziono: 5/56.
+2025-05-28 20:22:41,643 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:41,716 [DEBUG   ] [driver_utils        : 269] SUT Scroll #7: +321px.
+2025-05-28 20:22:42,013 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.9s (limit: 20.0s). Znaleziono: 5/56.
+2025-05-28 20:22:42,013 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:42,091 [DEBUG   ] [driver_utils        : 269] SUT Scroll #8: +334px.
+2025-05-28 20:22:42,482 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 3.3s (limit: 20.0s). Znaleziono: 5/56.
+2025-05-28 20:22:42,482 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:42,557 [DEBUG   ] [driver_utils        : 269] SUT Scroll #9: +364px.
+2025-05-28 20:22:42,784 [INFO    ] [driver_utils        : 276] SUT: 🍥 Wykryto WIDOCZNY spinner. Czekam do 6.0s...
+2025-05-28 20:22:44,842 [INFO    ] [driver_utils        : 284] SUT:   🍥 Spinner zniknął lub jest poza ekranem. Kontynuuję.
+2025-05-28 20:22:44,867 [INFO    ] [driver_utils        : 336] SUT: ➕ Znaleziono 5 nowych (łącznie: 10).
+2025-05-28 20:22:44,867 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5939 z puli.
+2025-05-28 20:22:44,868 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 20:22:44,869 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:44,869 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Szukanie... (10)
+2025-05-28 20:22:44,869 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.0s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:44,869 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:44,947 [DEBUG   ] [driver_utils        : 269] SUT Scroll #10: +304px.
+2025-05-28 20:22:45,331 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.5s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:45,331 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:45,406 [DEBUG   ] [driver_utils        : 269] SUT Scroll #11: +276px.
+2025-05-28 20:22:45,789 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.9s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:45,789 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:45,867 [DEBUG   ] [driver_utils        : 269] SUT Scroll #12: +365px.
+2025-05-28 20:22:46,164 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 1.3s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:46,164 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:46,242 [DEBUG   ] [driver_utils        : 269] SUT Scroll #13: +290px.
+2025-05-28 20:22:46,645 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 1.8s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:46,645 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:46,721 [DEBUG   ] [driver_utils        : 269] SUT Scroll #14: +359px.
+2025-05-28 20:22:47,023 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.2s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:47,023 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:47,107 [DEBUG   ] [driver_utils        : 269] SUT Scroll #15: +300px.
+2025-05-28 20:22:47,430 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.6s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:47,430 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:47,509 [DEBUG   ] [driver_utils        : 269] SUT Scroll #16: +320px.
+2025-05-28 20:22:47,771 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.9s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:47,771 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:47,846 [DEBUG   ] [driver_utils        : 269] SUT Scroll #17: +351px.
+2025-05-28 20:22:48,092 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 3.2s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:48,092 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:48,166 [DEBUG   ] [driver_utils        : 269] SUT Scroll #18: +288px.
+2025-05-28 20:22:48,422 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 3.6s (limit: 20.0s). Znaleziono: 10/56.
+2025-05-28 20:22:48,422 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:48,495 [DEBUG   ] [driver_utils        : 269] SUT Scroll #19: +283px.
+2025-05-28 20:22:48,733 [INFO    ] [driver_utils        : 276] SUT: 🍥 Wykryto WIDOCZNY spinner. Czekam do 6.0s...
+2025-05-28 20:22:51,818 [INFO    ] [driver_utils        : 284] SUT:   🍥 Spinner zniknął lub jest poza ekranem. Kontynuuję.
+2025-05-28 20:22:51,842 [INFO    ] [driver_utils        : 336] SUT: ➕ Znaleziono 5 nowych (łącznie: 15).
+2025-05-28 20:22:51,842 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5940 z puli.
+2025-05-28 20:22:51,844 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 20:22:51,844 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:51,844 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Szukanie... (15)
+2025-05-28 20:22:51,844 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.0s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:51,844 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:51,922 [DEBUG   ] [driver_utils        : 269] SUT Scroll #20: +315px.
+2025-05-28 20:22:52,185 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.3s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:52,187 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:52,262 [DEBUG   ] [driver_utils        : 269] SUT Scroll #21: +341px.
+2025-05-28 20:22:52,549 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.7s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:52,549 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:52,625 [DEBUG   ] [driver_utils        : 269] SUT Scroll #22: +274px.
+2025-05-28 20:22:53,037 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 1.2s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:53,037 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:53,114 [DEBUG   ] [driver_utils        : 269] SUT Scroll #23: +287px.
+2025-05-28 20:22:53,504 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 1.7s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:53,504 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:53,581 [DEBUG   ] [driver_utils        : 269] SUT Scroll #24: +290px.
+2025-05-28 20:22:53,906 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.1s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:53,906 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:53,980 [DEBUG   ] [driver_utils        : 269] SUT Scroll #25: +335px.
+2025-05-28 20:22:54,386 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.5s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:54,386 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:54,461 [DEBUG   ] [driver_utils        : 269] SUT Scroll #26: +277px.
+2025-05-28 20:22:54,880 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 3.0s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:54,880 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:54,959 [DEBUG   ] [driver_utils        : 269] SUT Scroll #27: +322px.
+2025-05-28 20:22:55,327 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 3.5s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:55,327 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:55,406 [DEBUG   ] [driver_utils        : 269] SUT Scroll #28: +282px.
+2025-05-28 20:22:55,791 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 3.9s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:55,793 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:55,867 [DEBUG   ] [driver_utils        : 269] SUT Scroll #29: +344px.
+2025-05-28 20:22:56,147 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 4.3s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:56,147 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:56,224 [DEBUG   ] [driver_utils        : 269] SUT Scroll #30: +312px.
+2025-05-28 20:22:56,527 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 4.7s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:56,529 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:56,604 [DEBUG   ] [driver_utils        : 269] SUT Scroll #31: +276px.
+2025-05-28 20:22:56,925 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 5.1s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:56,925 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:57,003 [DEBUG   ] [driver_utils        : 269] SUT Scroll #32: +310px.
+2025-05-28 20:22:57,330 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 5.5s (limit: 20.0s). Znaleziono: 15/56.
+2025-05-28 20:22:57,330 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:57,409 [DEBUG   ] [driver_utils        : 269] SUT Scroll #33: +306px.
+2025-05-28 20:22:57,786 [INFO    ] [driver_utils        : 336] SUT: ➕ Znaleziono 5 nowych (łącznie: 20).
+2025-05-28 20:22:57,787 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5941 z puli.
+2025-05-28 20:22:57,788 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 20:22:57,789 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 20:22:57,789 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Szukanie... (20)
+2025-05-28 20:22:57,789 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.0s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:22:57,789 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:57,868 [DEBUG   ] [driver_utils        : 269] SUT Scroll #34: +312px.
+2025-05-28 20:22:58,335 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 0.5s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:22:58,335 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:58,415 [DEBUG   ] [driver_utils        : 269] SUT Scroll #35: +300px.
+2025-05-28 20:22:58,769 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 1.0s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:22:58,769 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:58,847 [DEBUG   ] [driver_utils        : 269] SUT Scroll #36: +357px.
+2025-05-28 20:22:59,305 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 1.5s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:22:59,305 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:59,383 [DEBUG   ] [driver_utils        : 269] SUT Scroll #37: +321px.
+2025-05-28 20:22:59,654 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 1.9s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:22:59,654 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:22:59,730 [DEBUG   ] [driver_utils        : 269] SUT Scroll #38: +317px.
+2025-05-28 20:22:59,984 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.2s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:22:59,984 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:23:00,067 [DEBUG   ] [driver_utils        : 269] SUT Scroll #39: +337px.
+2025-05-28 20:23:00,375 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.6s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:23:00,375 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:23:00,454 [DEBUG   ] [driver_utils        : 269] SUT Scroll #40: +354px.
+2025-05-28 20:23:00,727 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 2.9s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:23:00,727 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:23:00,806 [DEBUG   ] [driver_utils        : 269] SUT Scroll #41: +354px.
+2025-05-28 20:23:01,102 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 3.3s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:23:01,102 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:23:01,194 [DEBUG   ] [driver_utils        : 269] SUT Scroll #42: +343px.
+2025-05-28 20:23:01,500 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 3.7s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:23:01,500 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:23:01,582 [DEBUG   ] [driver_utils        : 269] SUT Scroll #43: +303px.
+2025-05-28 20:23:02,013 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 4.2s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:23:02,013 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:23:02,095 [DEBUG   ] [driver_utils        : 269] SUT Scroll #44: +360px.
+2025-05-28 20:23:02,363 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 4.6s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:23:02,363 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:23:02,441 [DEBUG   ] [driver_utils        : 269] SUT Scroll #45: +353px.
+2025-05-28 20:23:02,777 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 5.0s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:23:02,777 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:23:02,860 [DEBUG   ] [driver_utils        : 269] SUT Scroll #46: +275px.
+2025-05-28 20:23:03,267 [DEBUG   ] [driver_utils        : 342] SUT: ⏳ Czas bez nowości: 5.5s (limit: 20.0s). Znaleziono: 20/56.
+2025-05-28 20:23:03,267 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 20:23:03,350 [DEBUG   ] [driver_utils        : 269] SUT Scroll #47: +362px.
+2025-05-28 20:23:03,519 [CRITICAL] [__main__            :  65] Otrzymano sygnał SIGINT (2). Inicjuję zamknięcie...
+2025-05-28 20:23:07,752 [WARNING ] [urllib3.connectionpool: 868] Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000231A7D88CB0>: Failed to establish a new connection: [WinError 10061] Nie można nawiązać połączenia, ponieważ komputer docelowy aktywnie go odmawia')': /session/64c8f5096dd34c4296deb65c9b13ecd5/element
