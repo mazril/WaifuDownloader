@@ -17,8 +17,8 @@ $action = $_GET['action'] ?? $_POST['action'] ?? null;
 $response = ['success' => false, 'message' => 'Nieznana akcja lub brak akcji.'];
 $pdo = get_db_connection();
 
-if (!$pdo && !in_array($action, ['get_status'])) { // get_status może próbować działać bez DB dla początkowego komunikatu
-    http_response_code(503); // Service Unavailable
+if (!$pdo && !in_array($action, ['get_status'])) { 
+    http_response_code(503); 
     $response['message'] = 'Błąd serwera: Nie można połączyć się z bazą danych.';
     echo json_encode($response);
     exit();
@@ -27,9 +27,8 @@ if (!$pdo && !in_array($action, ['get_status'])) { // get_status może próbowa�
 
 switch ($action) {
     case 'get_status':
-        $status_data = get_app_state_db('current_status'); // Pobierz z DB
+        $status_data = get_app_state_db('current_status'); 
         if ($status_data && is_array($status_data)) {
-            // Upewnij się, że wszystkie kluczowe pola istnieją
             $defaults = [
                 "timestamp" => date("Y-m-d H:i:s"),
                 "message" => "Brak danych statusu.",
@@ -51,102 +50,130 @@ switch ($action) {
         exit();
 
     case 'get_queue':
-        $queue_data = get_priority_queue_db(); // Pobierz z DB
-        echo json_encode($queue_data); // Zawsze zwracaj tablicę, nawet pustą
+        $queue_data = get_priority_queue_db(); 
+        echo json_encode($queue_data); 
         exit();
 
     case 'get_aggregate':
-        // Ta funkcja będzie teraz budować agregat na podstawie danych z tabel models i galleries
         $aggregate_data = ['models' => []];
         try {
             // 1. Pobierz wszystkie modelki
             $stmt_models = $pdo->query("SELECT model_id, model_name, sanitized_name FROM models ORDER BY model_name ASC");
             $models_from_db = $stmt_models->fetchAll(PDO::FETCH_ASSOC);
 
-            if (empty($models_from_db)) {
-                 // Sprawdź, czy są modelki w lista.txt, aby zapewnić puste wpisy, jeśli DB jest pusta, ale lista.txt nie
-                $models_in_list_txt = read_model_list_from_file();
-                foreach ($models_in_list_txt as $model_name_from_list) {
-                    $sanitized_from_list = sanitize_foldername($model_name_from_list);
-                    $aggregate_data['models'][$model_name_from_list] = [
-                        'galleries' => [],
-                        'sanitized_name' => $sanitized_from_list,
-                        'total_galleries' => 0,
-                        'completed_galleries' => 0,
-                        'model_progress' => 0
-                    ];
-                }
-            }
-
-
-            $stmt_galleries = $pdo->prepare("
-                SELECT gallery_id, url, original_title, determined_title, folder_path,
-                       expected_count, downloaded_count, status
-                FROM galleries
-                WHERE model_id = :model_id
-                ORDER BY COALESCE(determined_title, original_title, gallery_id) ASC
-            ");
-
+            $model_map = []; // Mapa model_id -> model_name_original dla szybkiego dostępu
             foreach ($models_from_db as $model_row) {
                 $model_name_original = $model_row['model_name'];
-                $sanitized_name = $model_row['sanitized_name'];
-                $model_id = $model_row['model_id'];
-
+                $model_map[$model_row['model_id']] = $model_name_original;
                 $aggregate_data['models'][$model_name_original] = [
                     'galleries' => [],
-                    'sanitized_name' => $sanitized_name,
+                    'sanitized_name' => $model_row['sanitized_name'],
                     'total_galleries' => 0,
                     'completed_galleries' => 0,
                     'model_progress' => 0
                 ];
-
-                $stmt_galleries->execute([':model_id' => $model_id]);
-                $galleries_for_model = $stmt_galleries->fetchAll(PDO::FETCH_ASSOC);
-
-                $completed_count_for_model = 0;
-                foreach ($galleries_for_model as $gallery_row) {
-                    $is_complete_status = in_array($gallery_row['status'], ["completed", "completed_with_tolerance"]);
-                    if ($is_complete_status) {
-                        $completed_count_for_model++;
-                    }
-                    $expected = $gallery_row['expected_count'];
-                    $downloaded = $gallery_row['downloaded_count'];
-                    $status_color = $is_complete_status ? 'green' : ($downloaded > 0 ? 'orange' : 'red');
-
-                    $aggregate_data['models'][$model_name_original]['galleries'][$gallery_row['gallery_id']] = [
-                        'title' => $gallery_row['determined_title'] ?: $gallery_row['original_title'] ?: $gallery_row['gallery_id'],
-                        'folder' => $gallery_row['folder_path'],
-                        'expected' => $expected,
-                        'downloaded' => $downloaded,
-                        'url' => $gallery_row['url'],
-                        'status_color' => $status_color,
-                        'completed' => $is_complete_status,
-                        'model_name' => $model_name_original, // Dla spójności z JS
-                        'gallery_id' => $gallery_row['gallery_id'] // Dla spójności z JS
-                    ];
-                }
-                $total_galleries_for_model = count($galleries_for_model);
-                $aggregate_data['models'][$model_name_original]['total_galleries'] = $total_galleries_for_model;
-                $aggregate_data['models'][$model_name_original]['completed_galleries'] = $completed_count_for_model;
-                $aggregate_data['models'][$model_name_original]['model_progress'] = ($total_galleries_for_model > 0) ? ($completed_count_for_model / $total_galleries_for_model * 100) : 0;
             }
+            
+            // Jeśli nie ma modeli w DB, sprawdź lista.txt dla pustych wpisów
+            if (empty($models_from_db)) {
+                $models_in_list_txt = read_model_list_from_file();
+                foreach ($models_in_list_txt as $model_name_from_list) {
+                    if (!isset($aggregate_data['models'][$model_name_from_list])) {
+                        $sanitized_from_list = sanitize_foldername($model_name_from_list);
+                        $aggregate_data['models'][$model_name_from_list] = [
+                            'galleries' => [],
+                            'sanitized_name' => $sanitized_from_list,
+                            'total_galleries' => 0,
+                            'completed_galleries' => 0,
+                            'model_progress' => 0
+                        ];
+                    }
+                }
+            }
+
+            // 2. Pobierz WSZYSTKIE galerie jednym zapytaniem, łącząc z modelami
+            $all_galleries_stmt = $pdo->query("
+                SELECT g.gallery_id, g.model_id, g.url, g.original_title, g.determined_title, 
+                       g.folder_path, g.expected_count, g.downloaded_count, g.status,
+                       m.model_name AS model_name_from_join 
+                FROM galleries g
+                JOIN models m ON g.model_id = m.model_id
+                ORDER BY m.model_name ASC, COALESCE(g.determined_title, g.original_title, g.gallery_id) ASC
+            ");
+            $all_galleries = $all_galleries_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($all_galleries as $gallery_row) {
+                $model_name_for_gallery = $gallery_row['model_name_from_join'];
+
+                // Upewnij się, że model istnieje w agregacie (powinien, jeśli JOIN działa)
+                if (!isset($aggregate_data['models'][$model_name_for_gallery])) {
+                    // To nie powinno się zdarzyć przy poprawnym JOIN, ale na wszelki wypadek
+                    $sani_name = sanitize_foldername($model_name_for_gallery); // Potrzebne, jeśli model nie był w $models_from_db
+                    $model_entry_check = $pdo->prepare("SELECT sanitized_name FROM models WHERE model_id = :mid");
+                    $model_entry_check->execute([':mid' => $gallery_row['model_id']]);
+                    $sani_name_result = $model_entry_check->fetchColumn();
+                    if($sani_name_result) $sani_name = $sani_name_result;
+
+                    $aggregate_data['models'][$model_name_for_gallery] = [
+                        'galleries' => [],
+                        'sanitized_name' => $sani_name,
+                        'total_galleries' => 0,
+                        'completed_galleries' => 0,
+                        'model_progress' => 0
+                    ];
+                    error_log("Ostrzeżenie: Galeria ".$gallery_row['gallery_id']." ma model_id ".$gallery_row['model_id'].", który nie był w początkowej liście modeli.");
+                }
+
+                $is_complete_status = in_array($gallery_row['status'], ["completed", "completed_with_tolerance"]);
+                if ($is_complete_status) {
+                    $aggregate_data['models'][$model_name_for_gallery]['completed_galleries']++;
+                }
+                $aggregate_data['models'][$model_name_for_gallery]['total_galleries']++;
+
+                $expected = $gallery_row['expected_count'];
+                $downloaded = $gallery_row['downloaded_count'];
+                $status_color = $is_complete_status ? 'green' : ($downloaded > 0 ? 'orange' : 'red');
+
+                $aggregate_data['models'][$model_name_for_gallery]['galleries'][$gallery_row['gallery_id']] = [
+                    'title' => $gallery_row['determined_title'] ?: $gallery_row['original_title'] ?: $gallery_row['gallery_id'],
+                    'folder' => $gallery_row['folder_path'],
+                    'expected' => $expected,
+                    'downloaded' => $downloaded,
+                    'url' => $gallery_row['url'],
+                    'status_color' => $status_color,
+                    'completed' => $is_complete_status,
+                    'model_name' => $model_name_for_gallery,
+                    'gallery_id' => $gallery_row['gallery_id']
+                ];
+            }
+
+            // Oblicz postęp dla każdego modelu po przetworzeniu wszystkich jego galerii
+            foreach ($aggregate_data['models'] as $model_name_key => &$model_data_ref) { // Przez referencję
+                if ($model_data_ref['total_galleries'] > 0) {
+                    $model_data_ref['model_progress'] = ($model_data_ref['completed_galleries'] / $model_data_ref['total_galleries'] * 100);
+                } else {
+                    $model_data_ref['model_progress'] = 0;
+                }
+            }
+            unset($model_data_ref); // Usuń referencję
 
         } catch (PDOException $e) {
             error_log("Błąd DB w get_aggregate: " . $e->getMessage());
             $response['message'] = 'Błąd pobierania danych agregatu z bazy.';
-            echo json_encode($response); // Zwróć błąd i zakończ
+            echo json_encode($response); 
             exit();
         }
         echo json_encode($aggregate_data);
         exit();
 
+    // ... (reszta case'ów bez zmian) ...
     case 'update_queue':
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $post_data = file_get_contents('php://input');
             $new_queue_from_js = json_decode($post_data, true);
 
             if (is_array($new_queue_from_js)) {
-                if (update_priority_queue_db($new_queue_from_js)) { // Zapisz do DB
+                if (update_priority_queue_db($new_queue_from_js)) { 
                     $response = ['success' => true, 'message' => 'Kolejka zaktualizowana w bazie danych.'];
                 } else {
                     $response['message'] = 'Błąd zapisu kolejki do bazy danych.';
@@ -164,8 +191,6 @@ switch ($action) {
     case 'add_model':
         $model_name_param = trim($_GET['model_name'] ?? '');
         if (!empty($model_name_param)) {
-            // Najpierw dodaj/zaktualizuj w bazie danych (Python i tak to zrobi, ale możemy tu też)
-            // Tutaj tylko dodajemy do lista.txt, Python zsynchronizuje z bazą `models` przy przetwarzaniu.
             $current_list_from_file = read_model_list_from_file();
             $exists_in_file = false;
             foreach ($current_list_from_file as $m) {
@@ -175,24 +200,22 @@ switch ($action) {
             if ($exists_in_file) {
                 $response['message'] = "Modelka '$model_name_param' już istnieje na liście w pliku lista.txt.";
             } else {
-                // Dodawanie do pliku lista.txt (jak poprzednio)
-                $file_handle = fopen(LIST_FILE_PATH, 'a+'); // a+ otwiera do odczytu i zapisu; wskaźnik na końcu
+                $file_handle = fopen(LIST_FILE_PATH, 'a+'); 
                 if ($file_handle) {
-                    if (flock($file_handle, LOCK_EX)) { // Zablokuj plik
-                        // Sprawdź, czy ostatnia linia to newline
-                        fseek($file_handle, 0, SEEK_END); // Idź na koniec
+                    if (flock($file_handle, LOCK_EX)) { 
+                        fseek($file_handle, 0, SEEK_END); 
                         $current_size = ftell($file_handle);
                         $line_to_add = $model_name_param . "\n";
 
                         if ($current_size > 0) {
-                            fseek($file_handle, -1, SEEK_END); // Cofnij o 1 bajt
+                            fseek($file_handle, -1, SEEK_END); 
                             if (fread($file_handle, 1) !== "\n") {
-                                $line_to_add = "\n" . $line_to_add; // Dodaj newline, jeśli go nie ma
+                                $line_to_add = "\n" . $line_to_add; 
                             }
                         }
                         fwrite($file_handle, $line_to_add);
-                        fflush($file_handle); // Upewnij się, że dane są zapisane
-                        flock($file_handle, LOCK_UN); // Odblokuj plik
+                        fflush($file_handle); 
+                        flock($file_handle, LOCK_UN); 
                         $response = ['success' => true, 'message' => "Modelka '$model_name_param' dodana do lista.txt."];
                     } else {
                         $response['message'] = "Nie udało się uzyskać blokady na pliku lista.txt.";
@@ -209,7 +232,7 @@ switch ($action) {
 
     case 'prioritize':
         $type_param = $_GET['type'] ?? null;
-        $id_param = $_GET['id'] ?? null; // Dla 'scan_model' to nazwa modelki, dla 'gallery' to ID galerii
+        $id_param = $_GET['id'] ?? null; 
 
         if ($type_param && $id_param) {
             $item_data_for_queue = null;
@@ -217,7 +240,6 @@ switch ($action) {
             $added_successfully = false;
 
             if ($type_param === 'scan_model' || $type_param === 'scan_model_refresh_only') {
-                // Dla scan_model, $id_param to nazwa modelki (string)
                 $item_data_for_queue = $id_param;
                 if (add_to_priority_queue_db($type_param, $item_data_for_queue, true)) {
                     $action_desc = ($type_param === 'scan_model_refresh_only') ? "odświeżania opisów" : "skanowania";
@@ -227,17 +249,13 @@ switch ($action) {
                    $message = "Zadanie dla '$id_param' już jest w kolejce lub wystąpił błąd dodawania do DB.";
                 }
             } elseif ($type_param === 'gallery') {
-                // Dla gallery, $id_param to ID galerii. Potrzebujemy pobrać resztę danych.
                 $gallery_full_data_from_db = find_gallery_data_by_id_db($id_param);
                 if ($gallery_full_data_from_db) {
-                    // Struktura $item_data dla galerii powinna być słownikiem
-                    // zawierającym 'id', 'model_name', 'title', 'count' (opcjonalnie 'url')
                     $item_data_for_queue = [
                         'id' => $gallery_full_data_from_db['id'],
                         'model_name' => $gallery_full_data_from_db['model_name'],
                         'title' => $gallery_full_data_from_db['title'],
                         'count' => $gallery_full_data_from_db['count'] ?? null,
-                        // 'url' => $gallery_full_data_from_db['url'] // Można dodać, jeśli potrzebne w Pythonie
                     ];
                     if (add_to_priority_queue_db('gallery', $item_data_for_queue, true)) {
                         $message = "Galeria '{$item_data_for_queue['title']}' (model: {$item_data_for_queue['model_name']}) dodana na początek kolejki.";
