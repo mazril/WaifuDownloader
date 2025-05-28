@@ -1,12 +1,12 @@
 <?php
 // api.php
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *'); // Dla dewelopmentu, w produkcji zawęź
+header('Access-Control-Allow-Origin: *'); 
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
-require_once 'php_config.php'; // Zawiera php_db_config.php
-require_once 'php_utils.php';  // Zawiera funkcje pomocnicze i DB
+require_once 'php_config.php'; 
+require_once 'php_utils.php';  
 
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     http_response_code(200);
@@ -15,11 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 
 $action = $_GET['action'] ?? $_POST['action'] ?? null;
 $response = ['success' => false, 'message' => 'Nieznana akcja lub brak akcji.'];
-$pdo = get_db_connection(); // Próbuj nawiązać połączenie na początku
+$pdo = get_db_connection(); 
 
-// Sprawdzenie połączenia PDO jest teraz bardziej ogólne
-if (!$pdo && !in_array($action, ['get_status'])) { // get_status może próbować działać bez DB dla początkowego komunikatu
-    http_response_code(503); // Service Unavailable
+if (!$pdo && !in_array($action, ['get_status'])) { 
+    http_response_code(503); 
     $response['message'] = 'Błąd serwera: Nie można połączyć się z bazą danych.';
     echo json_encode($response);
     exit();
@@ -28,6 +27,7 @@ if (!$pdo && !in_array($action, ['get_status'])) { // get_status może próbowa�
 
 switch ($action) {
     case 'get_status':
+        // ... (bez zmian)
         $status_data = get_app_state_db('current_status'); 
         if ($status_data && is_array($status_data)) {
             $defaults = [
@@ -51,11 +51,13 @@ switch ($action) {
         exit();
 
     case 'get_queue':
+        // ... (bez zmian)
         $queue_data = get_priority_queue_db(); 
         echo json_encode($queue_data); 
         exit();
 
     case 'get_aggregate':
+        // ... (bez zmian, jak w poprzedniej odpowiedzi)
         $aggregate_data = ['models' => []];
         try {
             $stmt_models = $pdo->query("SELECT model_id, model_name, sanitized_name FROM models ORDER BY model_name ASC");
@@ -74,21 +76,13 @@ switch ($action) {
                 ];
             }
             
-            if (empty($models_from_db)) {
-                $models_in_list_txt = read_model_list_from_file();
-                foreach ($models_in_list_txt as $model_name_from_list) {
-                    if (!isset($aggregate_data['models'][$model_name_from_list])) {
-                        $sanitized_from_list = sanitize_foldername($model_name_from_list);
-                        $aggregate_data['models'][$model_name_from_list] = [
-                            'galleries' => [],
-                            'sanitized_name' => $sanitized_from_list,
-                            'total_galleries' => 0,
-                            'completed_galleries' => 0,
-                            'model_progress' => 0
-                        ];
-                    }
-                }
-            }
+            // Ta część nie jest już potrzebna, bo php_utils::read_model_list_from_file() nie jest wywoływane
+            // if (empty($models_from_db)) {
+            //     $models_in_list_txt = read_model_list_from_file(); // To by odwoływało się do pliku
+            //     foreach ($models_in_list_txt as $model_name_from_list) {
+            //         // ... logika dodawania pustych modeli
+            //     }
+            // }
 
             $all_galleries_stmt = $pdo->query("
                 SELECT g.gallery_id, g.model_id, g.url, g.original_title, g.determined_title, 
@@ -112,7 +106,6 @@ switch ($action) {
                         'completed_galleries' => 0,
                         'model_progress' => 0
                     ];
-                    error_log("Ostrzeżenie (get_aggregate): Galeria ".$gallery_row['gallery_id']." ma model_id ".$gallery_row['model_id'].", który nie był w początkowej liście modeli. Dodano model: " . $model_name_for_gallery);
                 }
 
                 $is_complete_status = in_array($gallery_row['status'], ["completed", "completed_with_tolerance"]);
@@ -127,7 +120,7 @@ switch ($action) {
 
                 $aggregate_data['models'][$model_name_for_gallery]['galleries'][$gallery_row['gallery_id']] = [
                     'title' => $gallery_row['determined_title'] ?: $gallery_row['original_title'] ?: $gallery_row['gallery_id'],
-                    'folder' => $gallery_row['folder_path'], // Pełna ścieżka systemowa
+                    'folder' => $gallery_row['folder_path'], 
                     'expected' => $expected,
                     'downloaded' => $downloaded,
                     'url' => $gallery_row['url'],
@@ -157,13 +150,13 @@ switch ($action) {
         exit();
 
     case 'get_gallery_files':
+        // ... (bez zmian, jak w poprzedniej odpowiedzi)
         $gallery_id = $_GET['gallery_id'] ?? null;
         if (!$gallery_id) {
             $response['message'] = "Nie podano ID galerii.";
             echo json_encode($response);
             exit();
         }
-
         try {
             $stmt = $pdo->prepare("
                 SELECT g.folder_path, m.sanitized_name as model_sanitized_name
@@ -179,28 +172,19 @@ switch ($action) {
                 echo json_encode($response);
                 exit();
             }
-
             $absolute_folder_path = $gallery_data['folder_path'];
             $model_sanitized_name = $gallery_data['model_sanitized_name'];
-            
-            // Wyodrębnienie nazwy folderu galerii ze ścieżki absolutnej
-            // Przykład: D:\...\Modelki\ModelSanitizedName\GalleryFolder_ID -> GalleryFolder_ID
             $gallery_folder_name_only = basename($absolute_folder_path);
-
-            // Tworzenie ścieżki względnej dla URL
-            // Zakładamy, że BASE_DATA_DIR_NAME ("Modelki") jest bezpośrednio w web root projektu
             $web_path_segment = BASE_DATA_DIR_NAME . '/' . $model_sanitized_name . '/' . $gallery_folder_name_only;
-
 
             if (!is_dir($absolute_folder_path)) {
                 $response['message'] = "Folder galerii nie istnieje na serwerze: " . htmlspecialchars($absolute_folder_path);
                 $response['files'] = [];
-                $response['web_path_segment'] = $web_path_segment; // Mimo wszystko zwróć ścieżkę, może się przydać
-                $response['success'] = true; // Sukces, bo znaleźliśmy dane galerii, ale folder jest pusty/nie istnieje
+                $response['web_path_segment'] = $web_path_segment; 
+                $response['success'] = true; 
                 echo json_encode($response);
                 exit();
             }
-
             $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
             $files = [];
             $dir_iterator = new DirectoryIterator($absolute_folder_path);
@@ -212,15 +196,13 @@ switch ($action) {
                     }
                 }
             }
-            // Sortuj pliki alfanumerycznie dla spójnej kolejności
             natsort($files); 
             $response = [
                 'success' => true,
-                'files' => array_values($files), // array_values do zresetowania kluczy po natsort
-                'web_path_segment' => $web_path_segment, // np. Modelki/ModelName/GalleryFolder_ID
-                'gallery_id' => $gallery_id // Dodajemy ID galerii do odpowiedzi dla JS
+                'files' => array_values($files), 
+                'web_path_segment' => $web_path_segment, 
+                'gallery_id' => $gallery_id 
             ];
-
         } catch (PDOException $e) {
             error_log("Błąd DB w get_gallery_files dla ID '$gallery_id': " . $e->getMessage());
             $response['message'] = "Błąd bazy danych podczas pobierania informacji o galerii.";
@@ -233,6 +215,7 @@ switch ($action) {
 
 
     case 'update_queue':
+        // ... (bez zmian)
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $post_data = file_get_contents('php://input');
             $new_queue_from_js = json_decode($post_data, true);
@@ -253,49 +236,42 @@ switch ($action) {
         }
         break;
 
-    case 'add_model':
+    case 'add_model': // ZMODYFIKOWANO
         $model_name_param = trim($_GET['model_name'] ?? '');
-        if (!empty($model_name_param)) {
-            $current_list_from_file = read_model_list_from_file();
-            $exists_in_file = false;
-            foreach ($current_list_from_file as $m) {
-                if (strcasecmp($m, $model_name_param) === 0) { $exists_in_file = true; break; }
-            }
+        if (empty($model_name_param)) {
+            $response['message'] = "Nie podano nazwy modelki.";
+            echo json_encode($response);
+            exit();
+        }
 
-            if ($exists_in_file) {
-                $response['message'] = "Modelka '$model_name_param' już istnieje na liście w pliku lista.txt.";
+        try {
+            $sanitized_name = sanitize_foldername($model_name_param); // Użyj tej samej funkcji co Python
+            
+            // Sprawdź, czy modelka już istnieje
+            $stmt_check = $pdo->prepare("SELECT model_id FROM models WHERE model_name = :model_name OR sanitized_name = :sanitized_name");
+            $stmt_check->execute([':model_name' => $model_name_param, ':sanitized_name' => $sanitized_name]);
+            if ($stmt_check->fetch()) {
+                $response['message'] = "Modelka '$model_name_param' (lub jej znormalizowana forma) już istnieje w bazie danych.";
             } else {
-                $file_handle = fopen(LIST_FILE_PATH, 'a+'); 
-                if ($file_handle) {
-                    if (flock($file_handle, LOCK_EX)) { 
-                        fseek($file_handle, 0, SEEK_END); 
-                        $current_size = ftell($file_handle);
-                        $line_to_add = $model_name_param . "\n";
-
-                        if ($current_size > 0) {
-                            fseek($file_handle, -1, SEEK_END); 
-                            if (fread($file_handle, 1) !== "\n") {
-                                $line_to_add = "\n" . $line_to_add; 
-                            }
-                        }
-                        fwrite($file_handle, $line_to_add);
-                        fflush($file_handle); 
-                        flock($file_handle, LOCK_UN); 
-                        $response = ['success' => true, 'message' => "Modelka '$model_name_param' dodana do lista.txt."];
-                    } else {
-                        $response['message'] = "Nie udało się uzyskać blokady na pliku lista.txt.";
-                    }
-                    fclose($file_handle);
+                // Dodaj nową modelkę
+                $stmt_insert = $pdo->prepare("INSERT INTO models (model_name, sanitized_name) VALUES (:model_name, :sanitized_name)");
+                $stmt_insert->execute([':model_name' => $model_name_param, ':sanitized_name' => $sanitized_name]);
+                if ($stmt_insert->rowCount() > 0) {
+                    $response = ['success' => true, 'message' => "Modelka '$model_name_param' dodana do bazy danych."];
+                    // Opcjonalnie: można dodać do kolejki zadanie 'scan_model' dla nowo dodanej modelki
+                    // add_to_priority_queue_db('scan_model', $model_name_param, true);
                 } else {
-                    $response['message'] = "Błąd otwarcia pliku lista.txt.";
+                    $response['message'] = "Nie udało się dodać modelki '$model_name_param' do bazy danych.";
                 }
             }
-        } else {
-            $response['message'] = "Nie podano nazwy modelki.";
+        } catch (PDOException $e) {
+            error_log("Błąd DB w akcji add_model: " . $e->getMessage());
+            $response['message'] = "Błąd bazy danych podczas dodawania modelki: " . $e->getMessage();
         }
         break;
 
     case 'prioritize':
+        // ... (bez zmian)
         $type_param = $_GET['type'] ?? null;
         $id_param = $_GET['id'] ?? null; 
 
@@ -339,6 +315,89 @@ switch ($action) {
             $response['message'] = "Nie podano typu lub ID do priorytetyzacji.";
         }
         break;
+    
+    // NOWA AKCJA: search_galleries
+    case 'search_galleries':
+        $search_term = $_GET['term'] ?? '';
+        if (empty($search_term)) {
+            $response['galleries'] = [];
+            $response['success'] = true; // Zwracamy pustą listę, to nie błąd
+            echo json_encode($response);
+            exit();
+        }
+
+        $galleries = [];
+        try {
+            $sql = "SELECT g.gallery_id, g.url, g.original_title, g.determined_title, 
+                           g.expected_count, g.downloaded_count, g.status,
+                           m.model_name, m.sanitized_name as model_sanitized_name
+                    FROM galleries g
+                    JOIN models m ON g.model_id = m.model_id
+                    WHERE g.original_title LIKE :term 
+                       OR g.determined_title LIKE :term
+                       OR g.gallery_id LIKE :term 
+                       OR m.model_name LIKE :term
+                    ORDER BY m.model_name ASC, COALESCE(g.determined_title, g.original_title, g.gallery_id) ASC
+                    LIMIT 100"; // Limit wyników dla wydajności
+
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([':term' => '%' . $search_term . '%']);
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($results as $row) {
+                $is_complete_status = in_array($row['status'], ["completed", "completed_with_tolerance"]);
+                $galleries[] = [
+                    'gallery_id' => $row['gallery_id'],
+                    'title' => $row['determined_title'] ?: $row['original_title'] ?: $row['gallery_id'],
+                    'url' => $row['url'],
+                    'model_name' => $row['model_name'],
+                    'model_sanitized_name' => $row['model_sanitized_name'],
+                    'expected' => $row['expected_count'],
+                    'downloaded' => $row['downloaded_count'],
+                    'status_color' => $is_complete_status ? 'green' : ($row['downloaded_count'] > 0 ? 'orange' : 'red'),
+                    'completed' => $is_complete_status
+                ];
+            }
+            $response = ['success' => true, 'galleries' => $galleries];
+
+        } catch (PDOException $e) {
+            error_log("Błąd DB w search_galleries: " . $e->getMessage());
+            $response['message'] = "Błąd bazy danych podczas wyszukiwania galerii.";
+        }
+        echo json_encode($response);
+        exit();
+
+    // NOWA AKCJA: refresh_empty_descriptions_all
+    case 'refresh_empty_descriptions_all':
+        $models_to_refresh = [];
+        try {
+            // Znajdź modelki, które mają przynajmniej jedną galerię z expected_count IS NULL lub 0 i downloaded_count = 0
+            // To bardziej złożone zapytanie, aby uniknąć odświeżania modeli, które są faktycznie puste (bez galerii).
+            // Lepszym podejściem byłoby, gdyby Python miał flagę "wymaga odświeżenia opisów" na modelu.
+            // Na razie, prostsze: znajdź modelki z galeriami 0/0 lub ?/0.
+            // LUB, dla uproszczenia, po prostu dodaj *wszystkie* modele do kolejki scan_model_refresh_only.
+            // Python i tak pominie te, które nie wymagają aktualizacji.
+
+            $stmt = $pdo->query("SELECT model_name FROM models ORDER BY model_name ASC");
+            $all_models = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            
+            $added_count = 0;
+            foreach ($all_models as $model_name) {
+                 // Używamy prepend=false, aby nie zakłócać bieżących priorytetów,
+                 // a Python i tak przetworzy kolejkę.
+                if(add_to_priority_queue_db('scan_model_refresh_only', $model_name, false)) {
+                    $added_count++;
+                }
+            }
+            $response = ['success' => true, 'message' => "Dodano $added_count modeli do kolejki odświeżania opisów."];
+
+        } catch (PDOException $e) {
+            error_log("Błąd DB w refresh_empty_descriptions_all: " . $e->getMessage());
+            $response['message'] = "Błąd bazy danych podczas dodawania zadań odświeżania.";
+        }
+        echo json_encode($response);
+        exit();
+
 
     default:
         http_response_code(400);

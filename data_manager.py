@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
 import json
-import constants
+import constants # constants.py będzie teraz cieńszy
 import utils
 import logging
-import db_manager # Nowy import
+import db_manager 
 
 logger = logging.getLogger(__name__)
-
-# --- JSON Handling (Usunięto load/save_json_file_generic) ---
-# Pozostawiamy tylko funkcje niezwiązane z bazą danych, jeśli są potrzebne.
-# W tym przypadku, większość przeniesiona do DB lub usunięta.
 
 # --- Model Data ---
 def get_model_data_dir(model_name_sanitized):
@@ -21,9 +17,9 @@ def load_model_galleries_data(model_name_original):
     """Wczytuje dane galerii modelki z bazy danych."""
     model_id = db_manager.get_or_create_model(model_name_original)
     if not model_id:
+        logger.warning(f"Nie znaleziono ID dla modelki: {model_name_original} podczas ładowania galerii.")
         return {}
     galleries = db_manager.get_model_galleries(model_id)
-    # Konwertuj listę na słownik {gallery_id: gallery_data} dla zgodności
     return {g['gallery_id']: g for g in galleries} if galleries else {}
 
 def save_gallery_data(gallery_data):
@@ -41,16 +37,18 @@ def load_script_state():
     state = db_manager.get_app_state('script_state')
     default_state = {"last_model_index_processed": -1, "current_operation": {"name": None, "params": {}}}
     if not state:
+        # Jeśli stan nie istnieje w DB, utwórz go z wartościami domyślnymi
+        logger.info("Brak 'script_state' w DB, tworzę domyślny.")
         db_manager.set_app_state('script_state', default_state)
         return default_state
 
-    # Upewnij się, że wszystkie kluczowe pola istnieją
     state.setdefault("last_model_index_processed", -1)
-    state.setdefault("current_operation", {"name": None, "params": {}})
-    if not isinstance(state["current_operation"], dict):
+    current_op = state.get("current_operation")
+    if not isinstance(current_op, dict):
         state["current_operation"] = {"name": None, "params": {}}
-    state["current_operation"].setdefault("name", None)
-    state["current_operation"].setdefault("params", {})
+    else:
+        current_op.setdefault("name", None)
+        current_op.setdefault("params", {})
     return state
 
 def save_script_state(state_data):
@@ -71,70 +69,31 @@ def clear_active_operation():
     save_script_state(state)
     logger.info("Wyczyszczono stan aktywnej operacji (DB).")
 
-def update_last_model_index(index):
+def update_last_model_index(index): # Indeks będzie teraz mniej istotny, bo iterujemy po ID z DB
     state = load_script_state()
-    state["last_model_index_processed"] = index
+    # Zamiast indeksu, można by przechowywać ID ostatnio przetwarzanej modelki,
+    # ale dla zachowania spójności z obecną logiką menu, zostawiamy indeks.
+    # Jednak pętla w processing.py powinna iterować po modelach z DB.
+    state["last_model_index_processed"] = index 
     save_script_state(state)
     logger.debug(f"Zaktualizowano indeks ostatnio przetworzonego modelu na: {index} (DB)")
 
-# --- Model List (Pozostaje odczyt z pliku txt) ---
-def read_model_list(path=constants.LIST_FILE_PATH):
-    if not os.path.exists(path):
-        logger.warning(f"Plik listy modelek '{path}' nie istnieje! Tworzę pusty.")
-        try:
-            with open(path, 'w', encoding='utf-8') as f:
-                f.write("# Dodaj nazwy modelek, każda w nowej linii\n")
-        except Exception as e:
-            logger.error(f"Nie udało się utworzyć pliku lista.txt: {e}")
-        return []
-
+# --- Model List (Teraz z bazy danych) ---
+def read_model_list():
+    """Odczytuje listę nazw modelek z tabeli 'models' w bazie danych."""
+    logger.debug("Odczytywanie listy modelek z bazy danych...")
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            original_lines = f.readlines()
+        models_db = db_manager.execute_query("SELECT model_name FROM models ORDER BY model_name ASC", fetch_all=True)
+        if models_db:
+            model_names = [row['model_name'] for row in models_db]
+            logger.info(f"Pobrano {len(model_names)} modelek z bazy danych.")
+            return model_names
+        else:
+            logger.info("Brak modelek w bazie danych.")
+            return []
     except Exception as e:
-        logger.error(f"Nie udało się odczytać pliku lista.txt: {e}")
+        logger.error(f"Błąd podczas odczytu listy modelek z bazy danych: {e}", exc_info=True)
         return []
-
-    unique_models_ordered = []
-    seen_models_for_dedup = set()
-    final_lines_to_write = []
-    needs_rewrite = False
-
-    for line_content_orig in original_lines:
-        original_line_ending = ""
-        if line_content_orig.endswith("\r\n"): original_line_ending = "\r\n"
-        elif line_content_orig.endswith("\n"): original_line_ending = "\n"
-
-        line_for_processing = line_content_orig.strip()
-
-        if not line_for_processing or line_for_processing.startswith('#'):
-            final_lines_to_write.append(line_content_orig)
-            if line_for_processing != line_content_orig.rstrip('\n\r'): needs_rewrite = True
-            continue
-
-        cleaned_model_name = line_for_processing.rstrip(',').strip()
-        if cleaned_model_name != line_for_processing: needs_rewrite = True
-
-        if cleaned_model_name != line_content_orig.strip(): needs_rewrite = True
-
-        if cleaned_model_name and cleaned_model_name.lower() not in seen_models_for_dedup:
-            seen_models_for_dedup.add(cleaned_model_name.lower())
-            unique_models_ordered.append(cleaned_model_name)
-            final_lines_to_write.append(cleaned_model_name + (original_line_ending or '\n'))
-        elif cleaned_model_name.lower() in seen_models_for_dedup:
-            logger.info(f"Znaleziono i pominięto duplikat modelki w lista.txt: '{cleaned_model_name}'")
-            needs_rewrite = True
-        elif not cleaned_model_name and line_content_orig.strip(): needs_rewrite = True
-
-    if needs_rewrite:
-        logger.info(f"Aktualizuję plik {path} (usuwanie duplikatów/czyszczenie)...")
-        try:
-            with open(path, 'w', encoding='utf-8') as f: f.writelines(final_lines_to_write)
-            logger.info(f"Plik {path} zaktualizowany.")
-        except Exception as e:
-            logger.error(f"Błąd podczas aktualizacji pliku {path}: {e}", exc_info=True)
-
-    return unique_models_ordered
 
 # --- Priority Queue (Teraz w DB) ---
 def load_priority_queue():
