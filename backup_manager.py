@@ -11,6 +11,8 @@ import re
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import config_handler 
+# Zakładamy, że constants.py może już nie istnieć lub być w trakcie zmiany,
+# więc wartości takie jak BASE_DATA_DIR_NAME będą brane z config_handler lub zdefiniowane lokalnie.
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)-8s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -19,25 +21,38 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKUP_DIR_NAME = "_backups"
 BACKUP_BASE_PATH = os.path.join(SCRIPT_DIR, BACKUP_DIR_NAME)
 
+# --- Konfiguracja Ścieżek Narzędzi MySQL ---
+# DOSTOSUJ TE ŚCIEŻKI, JEŚLI NARZĘDZIA NIE SĄ W SYSTEMOWEJ ZMIENNEJ PATH
 MYSQLDUMP_PATH = r"C:\xampp\mysql\bin\mysqldump.exe" 
 MYSQL_CLIENT_PATH = r"C:\xampp\mysql\bin\mysql.exe"    
 
 FILES_TO_BACKUP_EXTENSIONS = ['.py', '.php', '.json', '.crx', '.txt']
+
+# Użyjemy BASE_DATA_DIR_NAME z config_handler.constants, jeśli dostępne, inaczej domyślne "Modelki"
+BASE_DATA_DIR_NAME_CONST = "Modelki" # Domyślna nazwa
+try:
+    if hasattr(config_handler, 'constants') and hasattr(config_handler.constants, 'BASE_DATA_DIR_NAME'):
+        BASE_DATA_DIR_NAME_CONST = config_handler.constants.BASE_DATA_DIR_NAME
+except AttributeError:
+    logger.warning("Nie można załadować BASE_DATA_DIR_NAME z config_handler.constants, używam domyślnej 'Modelki'.")
+
+
 FILES_TO_IGNORE_ON_BACKUP = [ 
     BACKUP_DIR_NAME,
     "__pycache__",
-    ".git", # Ignoruj .git przy tworzeniu backupu
+    ".git", 
     ".vscode",
     "script.log", 
     "backup_manager.log", 
-    "Modelki" 
+    BASE_DATA_DIR_NAME_CONST # Folder z pobranymi plikami jest ignorowany przy backupie plików programu
 ]
 FILES_TO_PRESERVE_ON_RESTORE = [
     os.path.basename(__file__), 
     "backup_manager.log",
     BACKUP_DIR_NAME,
-    "config.json", 
-    ".git", # Nie usuwaj .git przy przywracaniu
+    "config.json", # Nazwa pliku konfiguracyjnego
+    BASE_DATA_DIR_NAME_CONST, # ZAWSZE ZACHOWUJ KATALOG Z POBRANYMI PLIKAMI
+    ".git", 
     "script.log.bak", 
     "script.log.1",
     "script.log.2",
@@ -70,32 +85,33 @@ def backup_program_files(timestamp):
         with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(SCRIPT_DIR):
                 # Ignorowanie folderów na podstawie ich nazw (dla folderów w SCRIPT_DIR)
-                if os.path.abspath(root) == os.path.abspath(SCRIPT_DIR):
-                    dirs[:] = [d for d in dirs if d not in FILES_TO_IGNORE_ON_BACKUP and not d.startswith('.')]
-                
-                # Ignorowanie folderów na podstawie pełnej ścieżki (dla podfolderów)
-                # Ta linia jest kluczowa, aby shutil.rmtree nie próbował usuwać .git/objects/...
-                dirs[:] = [d for d in dirs if os.path.join(root, d) not in [os.path.join(SCRIPT_DIR, ig_item) for ig_item in FILES_TO_IGNORE_ON_BACKUP if os.path.isdir(os.path.join(SCRIPT_DIR, ig_item))]]
-
+                # Porównujemy pełne ścieżki, aby uniknąć problemów z relatywnymi ścieżkami
+                dirs[:] = [d for d in dirs if os.path.join(os.path.abspath(root), d) not in [os.path.join(SCRIPT_DIR, item) for item in FILES_TO_IGNORE_ON_BACKUP if os.path.isdir(os.path.join(SCRIPT_DIR, item))]]
+                dirs[:] = [d for d in dirs if not d.startswith('.') and d != "__pycache__"] # Ogólne ignorowanie ukrytych i pycache
 
                 for file in files:
                     file_path = os.path.join(root, file)
-                    relative_file_path_for_check = os.path.relpath(file_path, SCRIPT_DIR)
-                    
+                    # Sprawdź, czy plik nie jest samym archiwum backupu
+                    if os.path.abspath(file_path) == os.path.abspath(archive_path):
+                        continue
+
+                    # Sprawdź, czy plik lub jego katalog nadrzędny (względem SCRIPT_DIR) jest na liście ignorowanych
                     should_ignore_file = False
-                    # Sprawdź, czy plik lub jego ścieżka nadrzędna zaczyna się od ignorowanego elementu
-                    # lub czy jest to samo archiwum backupu
-                    if file_path == archive_path:
-                        should_ignore_file = True
-                    else:
-                        for ignored_item in FILES_TO_IGNORE_ON_BACKUP:
-                            # Sprawdź, czy ścieżka względna zaczyna się od ignorowanego folderu
-                            if relative_file_path_for_check.startswith(ignored_item + os.sep) or \
-                               relative_file_path_for_check == ignored_item:
-                                should_ignore_file = True
-                                break
+                    relative_path_parts = os.path.relpath(file_path, SCRIPT_DIR).split(os.sep)
                     
+                    # Sprawdź, czy którykolwiek z segmentów ścieżki jest na liście ignorowanych folderów
+                    # lub czy sama nazwa pliku jest na liście ignorowanych plików
+                    current_path_check = ""
+                    for part in relative_path_parts:
+                        current_path_check = os.path.join(current_path_check, part)
+                        if current_path_check in FILES_TO_IGNORE_ON_BACKUP:
+                            should_ignore_file = True
+                            break
+                    if relative_path_parts[-1] in FILES_TO_IGNORE_ON_BACKUP: # Sprawdź samą nazwę pliku
+                         should_ignore_file = True
+
                     if should_ignore_file:
+                        # logger.debug(f"Ignoruję plik (na liście ignorowanych): {file_path}")
                         continue
 
                     if any(file.endswith(ext) for ext in FILES_TO_BACKUP_EXTENSIONS):
@@ -110,6 +126,7 @@ def backup_program_files(timestamp):
         return False
 
 def backup_mysql_database(timestamp):
+    # ... (ta funkcja pozostaje bez zmian w stosunku do poprzedniej poprawionej wersji) ...
     backup_dir = ensure_backup_directory_exists()
     if not backup_dir: return False
 
@@ -177,12 +194,12 @@ def backup_mysql_database(timestamp):
             except Exception as e_rem:
                 logger.error(f"Nie udało się usunąć niekompletnego pliku backupu {backup_filepath}: {e_rem}")
 
+
 def list_backup_sets():
+    # ... (bez zmian) ...
     backup_dir = ensure_backup_directory_exists()
     if not backup_dir: return []
-
     backups = {} 
-    
     for filename in os.listdir(backup_dir):
         if filename.startswith("program_files_backup_") and filename.endswith(".zip"):
             match = re.search(r"program_files_backup_(\d{8}_\d{6})\.zip", filename)
@@ -200,7 +217,6 @@ def list_backup_sets():
                 backups[ts]["db"] = filename
                 try: backups[ts]["datetime"] = datetime.datetime.strptime(ts, "%Y%m%d_%H%M%S")
                 except ValueError: pass
-
     complete_sets = []
     for ts, data in backups.items():
         if "files" in data and "db" in data and "datetime" in data:
@@ -210,7 +226,6 @@ def list_backup_sets():
                 "db_backup_name": data["db"],
                 "datetime_obj": data["datetime"]
             })
-            
     complete_sets.sort(key=lambda x: x["datetime_obj"], reverse=True)
     return complete_sets
 
@@ -222,15 +237,20 @@ def restore_program_files(zip_backup_path):
 
     logger.info(f"Rozpoczynam przywracanie plików programu z: {zip_backup_path}")
     
-    preserved_full_paths = [os.path.join(SCRIPT_DIR, p) for p in FILES_TO_PRESERVE_ON_RESTORE]
+    # Tworzenie listy pełnych ścieżek do chronionych elementów
+    preserved_full_paths = [os.path.join(SCRIPT_DIR, p_item) for p_item in FILES_TO_PRESERVE_ON_RESTORE]
+    logger.debug(f"Elementy chronione przed usunięciem/nadpisaniem: {preserved_full_paths}")
 
     try:
+        # Usuwanie starych plików z zachowaniem chronionych
         for item_name in os.listdir(SCRIPT_DIR):
             item_full_path = os.path.join(SCRIPT_DIR, item_name)
             
             # Sprawdź, czy pełna ścieżka jest na liście do zachowania
+            # lub czy jest to folder nadrzędny dla chronionego elementu (np. SCRIPT_DIR sam w sobie)
+            # lub czy jest to sam folder BACKUP_DIR_NAME lub .git (już na liście)
             if item_full_path in preserved_full_paths or \
-               (os.path.isdir(item_full_path) and item_name in FILES_TO_PRESERVE_ON_RESTORE): # Dodatkowe sprawdzenie dla folderów
+               any(item_full_path.startswith(preserved_path + os.sep) for preserved_path in preserved_full_paths if os.path.isdir(preserved_path)) :
                 logger.debug(f"Pomijam usuwanie chronionego elementu: {item_full_path}")
                 continue
 
@@ -239,37 +259,59 @@ def restore_program_files(zip_backup_path):
                     os.unlink(item_full_path)
                     logger.debug(f"Usunięto plik: {item_full_path}")
                 elif os.path.isdir(item_full_path):
-                    shutil.rmtree(item_full_path) # Ten może nadal rzucić błąd dla .git
-                    logger.debug(f"Usunięto katalog: {item_full_path}")
-            except PermissionError as pe:
-                logger.warning(f"Odmowa dostępu podczas próby usunięcia '{item_full_path}': {pe}. Kontynuuję z pozostałymi.")
-            except Exception as e_del:
+                    # Dodatkowe zabezpieczenie dla .git, choć powinien być już w preserved_full_paths
+                    if item_name.lower() == ".git":
+                        logger.info("Jawnie pomijam usuwanie katalogu .git (ponowne sprawdzenie).")
+                        continue
+                    shutil.rmtree(item_full_path, onerror=handle_rmtree_error)
+                    logger.debug(f"Zakończono próbę usunięcia katalogu (lub jego zawartości): {item_full_path}")
+            except Exception as e_del: # Ogólny błąd, jeśli handle_rmtree_error nie wystarczył
                 logger.error(f"Błąd podczas usuwania '{item_full_path}': {e_del}. Kontynuuję z pozostałymi.")
         
+        logger.info("Rozpakowywanie archiwum...")
         with zipfile.ZipFile(zip_backup_path, 'r') as zipf:
             for member in zipf.namelist():
                 target_path = os.path.join(SCRIPT_DIR, member)
-                # Sprawdź, czy ścieżka docelowa nie jest jednym z chronionych elementów
-                # To jest drugie zabezpieczenie, gdyby usuwanie zawiodło a archiwum zawierało chroniony plik
-                is_preserved = False
+                
+                # Sprawdź, czy ścieżka docelowa (lub jej część nadrzędna) nie jest jednym z chronionych elementów
+                is_preserved_target = False
                 for preserved_item_name in FILES_TO_PRESERVE_ON_RESTORE:
                     preserved_full_item_path = os.path.join(SCRIPT_DIR, preserved_item_name)
+                    # Jeśli ścieżka docelowa jest identyczna LUB jest podkatalogiem chronionego katalogu
                     if os.path.abspath(target_path) == os.path.abspath(preserved_full_item_path) or \
-                       (os.path.isdir(preserved_full_item_path) and target_path.startswith(preserved_full_item_path + os.sep)):
-                        is_preserved = True
-                        logger.debug(f"Pomijam nadpisywanie chronionego elementu '{member}' z archiwum.")
+                       target_path.startswith(preserved_full_item_path + os.sep):
+                        is_preserved_target = True
+                        logger.debug(f"Pomijam nadpisywanie/tworzenie chronionego elementu '{member}' z archiwum.")
                         break
-                if not is_preserved:
-                    zipf.extract(member, SCRIPT_DIR)
-                    logger.debug(f"Przywrócono plik z archiwum: {member}")
+                
+                if not is_preserved_target:
+                    try:
+                        zipf.extract(member, SCRIPT_DIR)
+                        logger.debug(f"Przywrócono plik z archiwum: {member}")
+                    except Exception as e_extract:
+                        logger.error(f"Błąd podczas rozpakowywania pliku '{member}': {e_extract}")
+                else:
+                     logger.debug(f"Plik '{member}' z archiwum wskazuje na chronioną ścieżkę, pomijam rozpakowanie.")
 
-        logger.info(f"Pomyślnie przywrócono pliki programu z {zip_backup_path} do {SCRIPT_DIR}")
+
+        logger.info(f"Pomyślnie zakończono operację przywracania plików programu z {zip_backup_path} do {SCRIPT_DIR}")
         return True
     except Exception as e:
-        logger.error(f"Błąd podczas przywracania plików programu: {e}", exc_info=True)
+        logger.error(f"Krytyczny błąd podczas przywracania plików programu: {e}", exc_info=True)
         return False
 
+def handle_rmtree_error(func, path, exc_info):
+    """Obsługa błędów dla shutil.rmtree, szczególnie dla PermissionError."""
+    exc_type, exc_value, exc_tb = exc_info
+    if isinstance(exc_value, PermissionError):
+        logger.warning(f"Odmowa dostępu podczas usuwania '{path}' przez funkcję '{func.__name__}'. Plik/folder może być zablokowany. Kontynuuję.")
+    else:
+        # Dla innych błędów, rzuć je dalej, aby przerwać, lub zaloguj i kontynuuj
+        logger.error(f"Błąd podczas usuwania '{path}' przez '{func.__name__}': {exc_value}")
+        # raise # Można odkomentować, aby zatrzymać na innych błędach niż PermissionError
+
 def restore_mysql_database(sql_backup_path):
+    # ... (ta funkcja pozostaje bez zmian w stosunku do poprzedniej poprawionej wersji) ...
     if not os.path.exists(sql_backup_path):
         logger.error(f"Plik backupu bazy danych nie istnieje: {sql_backup_path}")
         return False
@@ -368,16 +410,15 @@ def restore_mysql_database(sql_backup_path):
 
 
 def display_and_select_backup_set(backup_sets):
+    # ... (bez zmian) ...
     if not backup_sets:
         logger.info("Nie znaleziono żadnych kompletnych zestawów backupów (pliki + baza danych).")
         return None
-    
     print("\nDostępne kompletne zestawy backupów (posortowane od najnowszych):")
     for i, backup_set in enumerate(backup_sets):
         print(f"  {i+1}. Data: {backup_set['datetime_obj'].strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"     Pliki: {backup_set['files_backup_name']}")
         print(f"     Baza:  {backup_set['db_backup_name']}")
-    
     while True:
         try:
             choice = input("Wybierz numer zestawu backupu do przywrócenia (lub 0 aby anulować): ")
@@ -392,17 +433,14 @@ def display_and_select_backup_set(backup_sets):
 
 
 def handle_restore_set():
+    # ... (bez zmian) ...
     logger.info(">>> Rozpoczynanie procesu przywracania z backupu <<<")
     backup_sets = list_backup_sets()
-
-    if not backup_sets:
-        return
-
+    if not backup_sets: return
     selected_set = display_and_select_backup_set(backup_sets)
     if not selected_set:
         logger.info("Nie wybrano zestawu backupu do przywrócenia.")
         return
-
     logger.warning("-" * 50)
     logger.warning("UWAGA: Wybrano przywracanie następującego zestawu backupu:")
     logger.warning(f"  Data: {selected_set['datetime_obj'].strftime('%Y-%m-%d %H:%M:%S')}")
@@ -411,14 +449,11 @@ def handle_restore_set():
     logger.warning("Ta operacja NADPISZE bieżące pliki programu (z wyjątkiem chronionych)")
     logger.warning("oraz CAŁKOWICIE USUNIE i ZASTĄPI bieżącą bazę danych.")
     logger.warning("-" * 50)
-    
     if input("Czy na pewno chcesz kontynuować z przywracaniem tego zestawu? (tak/nie): ").lower() != 'tak':
         logger.info("Przywracanie zestawu backupu anulowane przez użytkownika.")
         return
-
     files_backup_path = os.path.join(BACKUP_BASE_PATH, selected_set["files_backup_name"])
     db_backup_path = os.path.join(BACKUP_BASE_PATH, selected_set["db_backup_name"])
-
     logger.info("--- Rozpoczynanie przywracania plików programu ---")
     files_restored_ok = restore_program_files(files_backup_path)
     if files_restored_ok:
@@ -428,16 +463,12 @@ def handle_restore_set():
         if input("Wystąpił błąd przywracania plików. Czy mimo to kontynuować z przywracaniem bazy danych? (tak/nie): ").lower() != 'tak':
             logger.info("Przywracanie bazy danych anulowane po błędzie przywracania plików.")
             return
-
     logger.info("--- Rozpoczynanie przywracania bazy danych ---")
-    # Potwierdzenie przywrócenia bazy jest teraz w tej funkcji, ale już było jedno ogólne.
-    # Można by usunąć wewnętrzne potwierdzenie z restore_mysql_database, jeśli to jest uciążliwe.
     db_restored_ok = restore_mysql_database(db_backup_path) 
     if db_restored_ok:
         logger.info("--- Przywracanie bazy danych zakończone pomyślnie ---")
     else:
         logger.error("!!! Błąd podczas przywracania bazy danych. Sprawdź logi. Baza może być w niekonsystentnym stanie! !!!")
-
     if files_restored_ok and db_restored_ok:
         logger.info(">>> Pełne przywracanie z zestawu backupu zakończone pomyślnie. <<<")
     else:
@@ -445,13 +476,13 @@ def handle_restore_set():
 
 
 def main_menu():
+    # ... (bez zmian) ...
     while True:
         print("\n--- Menedżer Backupów ---")
         print("1. Wykonaj pełny backup (pliki programu i baza danych)")
         print("2. Przywróć z kompletnego zestawu backupu")
         print("3. Wyjdź")
         choice = input("Wybierz opcję: ")
-
         if choice == '1':
             logger.info(">>> Rozpoczynanie procesu tworzenia nowego backupu <<<")
             current_timestamp = generate_timestamp() 
@@ -459,7 +490,6 @@ def main_menu():
             db_ok = False 
             if files_ok: 
                 db_ok = backup_mysql_database(current_timestamp)
-            
             if files_ok and db_ok: 
                 logger.info(">>> Wszystkie operacje tworzenia backupu zakończone pomyślnie! <<<")
             else: 
@@ -478,26 +508,28 @@ if __name__ == "__main__":
     logging.getLogger().addHandler(log_file_handler)
     
     # Dynamiczne pobieranie nazwy pliku konfiguracyjnego
-    config_file_name_to_preserve = "config.json" # Domyślna wartość
+    config_file_name_to_preserve = "config.json" 
     try:
-        # Sprawdź, czy config_handler i jego stałe są dostępne
-        # To jest trochę nadmiarowe, bo config_handler jest importowany na górze
-        # ale zostawiam dla bezpieczeństwa, jeśli struktura projektu by się zmieniła
-        if 'config_handler' in sys.modules and \
-           hasattr(config_handler, 'constants') and \
-           hasattr(config_handler.constants, 'CONFIG_FILENAME'):
+        # Uzyskanie nazwy pliku config.json ze stałej w config_handler, jeśli istnieje
+        # Założenie: config_handler.py i constants.py są w tym samym katalogu
+        if hasattr(config_handler, 'constants') and hasattr(config_handler.constants, 'CONFIG_FILENAME'):
             config_file_name_to_preserve = config_handler.constants.CONFIG_FILENAME
-    except Exception: # Ogólny wyjątek, jeśli coś pójdzie nie tak z dostępem do stałej
-        logger.warning("Nie udało się dynamicznie pobrać nazwy pliku config z config_handler.constants. Używam domyślnej 'config.json' do zachowania.")
+    except NameError: # Jeśli config_handler.constants nie jest zdefiniowane
+         logger.debug("config_handler.constants nie znaleziono, używam domyślnej nazwy 'config.json' do zachowania.")
+    except AttributeError:
+        logger.debug("Atrybut CONFIG_FILENAME nie znaleziony w config_handler.constants, używam domyślnej 'config.json'.")
+
 
     # Upewnij się, że poprawna nazwa pliku config jest na liście do zachowania
+    # Usuń najpierw 'config.json' (jeśli tam jest), a potem dodaj właściwą, aby uniknąć duplikatów
+    # i obsłużyć sytuację, gdyby `config_file_name_to_preserve` było różne od "config.json"
+    if "config.json" in FILES_TO_PRESERVE_ON_RESTORE and "config.json" != config_file_name_to_preserve:
+        FILES_TO_PRESERVE_ON_RESTORE.remove("config.json")
     if config_file_name_to_preserve not in FILES_TO_PRESERVE_ON_RESTORE:
-        # Usuń potencjalnie starą/domyślną wartość 'config.json', jeśli jest inna niż dynamicznie pobrana
-        if "config.json" in FILES_TO_PRESERVE_ON_RESTORE and "config.json" != config_file_name_to_preserve:
-            FILES_TO_PRESERVE_ON_RESTORE.remove("config.json")
         FILES_TO_PRESERVE_ON_RESTORE.append(config_file_name_to_preserve)
-    # Usuń duplikaty, jeśli by powstały
+    # Usuń duplikaty, jeśli by powstały (np. jeśli default to to samo co z constants)
     FILES_TO_PRESERVE_ON_RESTORE = list(set(FILES_TO_PRESERVE_ON_RESTORE))
+
 
     logger.debug(f"Pliki/foldery chronione podczas przywracania: {FILES_TO_PRESERVE_ON_RESTORE}")
     main_menu()
