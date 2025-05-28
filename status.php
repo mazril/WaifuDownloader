@@ -1,64 +1,54 @@
 <?php
 // status.php
-require_once 'php_config.php';
-require_once 'php_utils.php';
+require_once 'php_config.php'; // Zawiera php_db_config.php
+require_once 'php_utils.php';  // Zawiera funkcje pomocnicze
 
-$global_data = load_json_file(STATUS_JSON_AGGREGATE_PATH, ["models" => []]);
-$models = $global_data['models'] ?? [];
-$sorted_models = $models;
-uksort($sorted_models, function ($a, $b) {
-    return strcasecmp($a, $b);
-});
-
-$aggregate_last_modified_timestamp = "N/A";
-if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
-    $aggregate_last_modified_timestamp = date("Y-m-d H:i:s", filemtime(STATUS_JSON_AGGREGATE_PATH));
-}
+// $global_data jest teraz puste, dane będą ładowane przez JavaScript z API
+$sorted_models = []; // Zostanie wypełnione przez JS
+$aggregate_last_modified_timestamp = "Ładowanie..."; // Zostanie zaktualizowane przez JS
 
 ?>
 <!DOCTYPE html>
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>Status Pobierania (PHP)</title>
+    <title>Status Pobierania (PHP/MySQL)</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; padding: 15px; background-color: #f9f9f9; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; padding: 15px; background-color: #f9f9f9; color: #333; }
         ul { list-style-type: none; padding-left: 0; }
         .model-li > ul.nested { padding-left: 20px; }
         .toggle { cursor: pointer; margin-right: 8px; font-weight: bold; user-select: none; width: 15px; display: inline-block; text-align: center; color: #333; }
         .model-li { margin-bottom: 8px; background-color: #fff; border: 1px solid #ddd; padding: 0; border-radius: 5px; box-shadow: 0 1px 2px rgba(0, 0, 0, .05); overflow: hidden; }
         .model-header { display: flex; align-items: center; padding: 8px 12px; background-color: #e9ecef; border-bottom: 1px solid #ddd; transition: background-color 0.3s; }
-        .model-li.model-partial > .model-header { background-color: #FFE0B2; }
-        .model-li.model-complete > .model-header { background-color: #A5D6A7; }
-        .model-li.model-processing > .model-header { background-color: #ADD8E6; }
-        .model-header .toggle { margin-right: 8px; }
+        .model-li.model-partial > .model-header { background-color: #FFE0B2; } /* Pomarańczowy dla częściowo ukończonych */
+        .model-li.model-complete > .model-header { background-color: #A5D6A7; } /* Zielony dla ukończonych */
+        .model-li.model-processing > .model-header { background-color: #B3E5FC; } /* Jasnoniebieski dla przetwarzanych */
         .model-header .model-name { flex-grow: 1; font-weight: bold; }
         ul.nested { display: none; padding-left: 25px; border-left: 2px solid #dee2e6; margin-left: 7px; background-color: #fff; margin-top: 5px; border-radius: 4px; padding: 10px; }
         ul.nested.active { display: block; }
         .gallery-li { margin-bottom: 4px; border-bottom: 1px solid #f1f3f5; padding: 6px 0; display: flex; justify-content: space-between; align-items: center; transition: background-color 0.3s; }
-        .gallery-li.processing { background-color: #e0f7fa; }
+        .gallery-li.processing { background-color: #e0f7fa !important; } /* Bardziej wyraźny niebieski dla przetwarzanej galerii */
         .gallery-link { flex-grow: 1; margin-right: 10px; font-size: 0.95em; display: flex; align-items: center; }
         .gallery-controls { display: flex; align-items: center; flex-shrink: 0; }
         .newly-found-count { font-size: 0.8em; color: #007bff; margin-right: 8px; display: none; }
-        .gallery-status { font-size: .9em; padding: 2px 6px; border-radius: 3px; color: #fff; min-width: 65px; text-align: center; margin-left: 5px; }
-        .green { background-color: #28a745; } .orange { background-color: #fd7e14; } .red { background-color: #dc3545; }
+        .gallery-status { font-size: .9em; padding: 2px 6px; border-radius: 3px; color: #fff; min-width: 75px; text-align: center; margin-left: 5px; }
+        .green { background-color: #28a745; } .orange { background-color: #fd7e14; } .red { background-color: #dc3545; } .blue { background-color: #007bff }
         h1 { font-size: 1.6em; color: #343a40; border-bottom: 2px solid #adb5bd; padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
         h1 small#last-aggregate-update-time { color: #6c757d; font-size: .7em; }
         a { text-decoration: none; color: #007bff; } a:hover { text-decoration: underline; }
         #current-status { font-size: 0.9em; font-weight: bold; color: #555; background-color: #fff; padding: 10px; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,.05); margin-bottom: 15px; border: 1px solid #ddd; min-height: 1.2em; transition: background-color 0.5s; }
-        .progress-bar-container { width: 80px; height: 12px; background-color: #e0e0e0; border-radius: 5px; overflow: hidden; display: inline-block; margin-left: 10px; vertical-align: middle; border: 1px solid #c5c5c5; }
-        .progress-bar { height: 100%; background-color: #4CAF50; width: 0%; transition: width 0.3s ease-in-out; text-align: center; color: white; font-size: 0.7em; line-height: 12px; }
+        .progress-bar-container { width: 80px; height: 12px; background-color: #e9ecef; border-radius: 5px; overflow: hidden; display: inline-block; margin-left: 10px; vertical-align: middle; border: 1px solid #ced4da; }
+        .progress-bar { height: 100%; background-color: #28a745; width: 0%; transition: width 0.3s ease-in-out; text-align: center; color: white; font-size: 0.7em; line-height: 12px; }
         .progress-bar.orange { background-color: #fd7e14; } .progress-bar.red { background-color: #dc3545; }
-        .btn-action { font-size: 0.8em; padding: 3px 7px; margin-left: 5px; cursor: pointer; border: 1px solid #ccc; background-color: #f0f0f0; border-radius: 3px; color: #333; text-decoration: none; display: inline-block; }
-        .btn-action:hover { background-color: #e0e0e0; text-decoration: none; color: #333; }
-        #toast { position: fixed; bottom: 20px; right: 20px; background-color: #333; color: white; padding: 15px; border-radius: 5px; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.5s, visibility 0.5s; font-size: 0.9em; }
+        .btn-action { font-size: 0.8em; padding: 3px 7px; margin-left: 5px; cursor: pointer; border: 1px solid #ccc; background-color: #f8f9fa; border-radius: 3px; color: #212529; text-decoration: none; display: inline-block; }
+        .btn-action:hover { background-color: #e2e6ea; text-decoration: none; color: #212529; }
+        #toast { position: fixed; bottom: 20px; right: 20px; background-color: #212529; color: white; padding: 15px; border-radius: 5px; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.5s, visibility 0.5s; font-size: 0.9em; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
         #toast.show { opacity: 1; visibility: visible; }
         .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0, 0, 0, 0.1); border-left-color: #007bff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; visibility: hidden; }
         .gallery-li.processing .spinner { visibility: visible; }
-        #add-model-section { margin-bottom: 15px; padding: 10px; background-color: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
-        #add-model-section input[type="text"] { padding: 6px; border: 1px solid #ccc; border-radius: 3px; flex-grow: 1; }
-        #add-model-section button { padding: 6px 12px; }
-        #add-model-status { font-size: 0.9em; color: #555; }
+        #add-model-section { margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
+        #add-model-section input[type="text"] { padding: 6px; border: 1px solid #ced4da; border-radius: 3px; flex-grow: 1; }
+        #add-model-status { font-size: 0.9em; color: #495057; }
         .modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
         .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 700px; border-radius: 5px; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); }
         .close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1; }
@@ -79,6 +69,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         .modal-content h2 { margin-top: 0; }
         .modal-content p { font-size: 0.85em; color: #555; }
         .modal-content button { margin-top: 10px; }
+        .loader { text-align: center; padding: 20px; font-size: 1.2em; color: #6c757d; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
@@ -87,7 +78,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
 <div id="toast">Wiadomość toast!</div>
 <div id="current-status">Ładowanie statusu...</div>
 
-<h1>Status Pobierania <small id="last-aggregate-update-time">(Dane zbiorcze: <?php echo htmlspecialchars($aggregate_last_modified_timestamp); ?>)</small>
+<h1>Status Pobierania <small id="last-aggregate-update-time">(<?php echo htmlspecialchars($aggregate_last_modified_timestamp); ?>)</small>
     <button id="manage-queue-btn" class="btn-action" onclick="openQueueModal()">
         Zarządzaj Kolejką (<span id="queue-count">?</span>)
     </button>
@@ -100,86 +91,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
 </div>
 
 <ul id="model-tree">
-    <?php foreach ($sorted_models as $model_name => $model_data): ?>
-        <?php
-            $model_name_sanitized = $model_data['sanitized_name'] ?? sanitize_foldername($model_name);
-            $galleries = $model_data['galleries'] ?? [];
-            $total_galleries = count($galleries);
-            $completed_galleries = 0;
-            foreach ($galleries as $g_info) {
-                if (is_array($g_info) && ($g_info['completed'] ?? false)) {
-                    $completed_galleries++;
-                }
-            }
-            $model_progress = ($total_galleries > 0) ? ($completed_galleries / $total_galleries * 100) : 0;
-
-            $model_li_class = "model-li";
-            if ($total_galleries > 0 && $completed_galleries === $total_galleries) {
-                $model_li_class .= " model-complete";
-            } elseif ($completed_galleries > 0 && $completed_galleries < $total_galleries) {
-                $model_li_class .= " model-partial";
-            }
-        ?>
-        <li class="<?php echo htmlspecialchars($model_li_class); ?>" data-model-name="<?php echo htmlspecialchars($model_name_sanitized); ?>">
-            <div class="model-header">
-                <span class="toggle">+</span>
-                <span class="model-name"><?php echo htmlspecialchars($model_name); ?> (<?php echo $completed_galleries; ?>/<?php echo $total_galleries; ?>)</span>
-                <div class="progress-bar-container" title="<?php echo number_format($model_progress, 1); ?>% ukończonych galerii">
-                    <div class="progress-bar" style="width:<?php echo number_format($model_progress, 1); ?>%;"><?php echo number_format($model_progress, 0); ?>%</div>
-                </div>
-                <button class="btn-action" onclick="prioritizeItem('scan_model', '<?php echo htmlspecialchars($model_name, ENT_QUOTES); ?>')" title="Skanuj, aktualizuj i dodaj brakujące galerie do kolejki pobierania">Uzupełnij Model</button>
-                <button class="btn-action" onclick="prioritizeItem('scan_model_refresh_only', '<?php echo htmlspecialchars($model_name, ENT_QUOTES); ?>')" title="Tylko skanuj i aktualizuj opisy/liczniki (bez dodawania do kolejki pobierania)">Odśwież Opisy</button>
-            </div>
-            <ul class="nested">
-                <?php
-                    $sorted_galleries = $galleries;
-                    uasort($sorted_galleries, function ($a, $b) {
-                        return strcasecmp($a['title'] ?? '', $b['title'] ?? '');
-                    });
-                ?>
-                <?php foreach ($sorted_galleries as $gallery_id => $gallery_info): ?>
-                    <?php
-                        if (!is_array($gallery_info)) continue;
-                        $title_html = htmlspecialchars($gallery_info['title'] ?? $gallery_id);
-                        $expected = $gallery_info['expected'] ?? null;
-                        $downloaded = $gallery_info['downloaded'] ?? 0;
-                        $url = $gallery_info['url'] ?? '#';
-                        $color = $gallery_info['status_color'] ?? 'red';
-                        $folder = htmlspecialchars($gallery_info['folder'] ?? 'Brak');
-                        $gallery_progress = 0;
-                        if ($expected !== null && $expected > 0) {
-                            $gallery_progress = ($downloaded / $expected * 100);
-                        } elseif (($gallery_info['completed'] ?? false) && ($expected === 0 || $expected === null) && $downloaded === 0) {
-                            $gallery_progress = 100;
-                        } elseif (($gallery_info['completed'] ?? false)) {
-                            $gallery_progress = 100;
-                        }
-
-                        $progress_bar_color_class = ($gallery_progress >= 100) ? 'green' : ($downloaded > 0 ? 'orange' : 'red');
-                        $expected_text = $expected !== null ? $expected : '?';
-                    ?>
-                    <li class="gallery-li" id="gallery_li_<?php echo htmlspecialchars($gallery_id); ?>" data-expected="<?php echo $expected_text; ?>" data-downloaded="<?php echo $downloaded; ?>">
-                        <span class="gallery-link">
-                            <span class="spinner" id="spinner_<?php echo htmlspecialchars($gallery_id); ?>"></span>
-                            <a href="<?php echo htmlspecialchars($url); ?>" target="_blank" title="Folder: <?php echo $folder; ?>"><?php echo $title_html; ?></a>
-                        </span>
-                        <div class="gallery-controls">
-                            <span class="newly-found-count" id="newly_found_<?php echo htmlspecialchars($gallery_id); ?>"></span>
-                            <div class="progress-bar-container" id="progress_container_<?php echo htmlspecialchars($gallery_id); ?>" title="D: <?php echo $downloaded; ?>/<?php echo $expected_text; ?> (<?php echo number_format($gallery_progress, 1); ?>%)">
-                                <div class="progress-bar <?php echo $progress_bar_color_class; ?>" id="progress_bar_<?php echo htmlspecialchars($gallery_id); ?>" style="width:<?php echo number_format($gallery_progress, 1); ?>%;"><?php echo number_format($gallery_progress, 0); ?>%</div>
-                            </div>
-                            <span class="gallery-status <?php echo $color; ?>" id="status_<?php echo htmlspecialchars($gallery_id); ?>">D: <?php echo $downloaded; ?>/<?php echo $expected_text; ?></span>
-                            <button class="btn-action" onclick="prioritizeItem('gallery', '<?php echo htmlspecialchars($gallery_id, ENT_QUOTES); ?>')" title="Uzupełnij tę galerię priorytetowo">Uzupełnij</button>
-                            <a href="<?php echo htmlspecialchars($url); ?>" target="_blank" class="btn-action" title="Otwórz stronę źródłową galerii">Źródło</a>
-                        </div>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
-        </li>
-    <?php endforeach; ?>
-    <?php if (empty($sorted_models)): ?>
-        <li>Brak modeli na liście lub plik statusu nie został jeszcze wygenerowany. Uruchom skrypt Python.</li>
-    <?php endif; ?>
+    <li class="loader">Ładowanie listy modeli...</li>
 </ul>
 
 <div id="queue-modal" class="modal">
@@ -199,31 +111,27 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
 <script>
     const API_URL = '<?php echo API_URL; ?>';
     const toastDiv = document.getElementById('toast');
+    const modelTreeUl = document.getElementById('model-tree');
 
     let activeGalleryIdForUI = null;
     let activeModelNameSanitizedForUI = null;
     let aggregateRefreshTimeout = null;
 
+    // Funkcja sanitize_foldername z utils.js (lub zaimplementowana tutaj jeśli utils.js nie jest globalne)
     function pySanitizeForQuerySelector(name) {
         if (typeof name !== 'string') name = String(name);
         let sanitized = name.trim();
         sanitized = sanitized.replace(/[<>:"\/\\|?*\x00-\x1F\t\n\r\f\v]/g, '_');
-        sanitized = sanitized.replace(/\s+/g, ' ');
-        sanitized = sanitized.trim();
-        if (sanitized.length > 1) {
-            sanitized = sanitized.replace(/_+/g, '_');
-            sanitized = sanitized.replace(/-+/g, '-');
-        }
-        sanitized = sanitized.replace(/^[\s._-]+|[\s._-]+$/g, '');
-        if (sanitized.length > 150) sanitized = sanitized.substring(0, 150);
-        sanitized = sanitized.replace(/^[\s._-]+|[\s._-]+$/g, '');
-        sanitized = sanitized.replace(/\s+/g, '_'); // Zamiana spacji na _ dla pewności
-        return sanitized ? sanitized : "_fallback_sanitized_name_";
+        sanitized = sanitized.replace(/\s+/g, '_'); // Spacje na podkreślenia dla ID
+        sanitized = sanitized.replace(/[^a-zA-Z0-9_.-]/g, ''); // Usuń niebezpieczne znaki
+        sanitized = sanitized.trim('_.-');
+        if (sanitized.length > 100) sanitized = sanitized.substring(0, 100); // Ogranicz długość
+        return sanitized ? sanitized : "fallback_sanitized_name";
     }
 
     function showToast(message, isError = false) {
         toastDiv.textContent = message;
-        toastDiv.style.backgroundColor = isError ? '#dc3545' : '#333';
+        toastDiv.style.backgroundColor = isError ? '#dc3545' : '#212529';
         toastDiv.classList.add('show');
         setTimeout(() => { toastDiv.classList.remove('show'); }, 3500);
     }
@@ -232,7 +140,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         console.log(`Wysłano żądanie priorytetu: typ=${type}, id=${id}`);
         showToast(`Wysyłanie żądania priorytetu dla ${type}: ${id}...`);
 
-        fetch(`${API_URL}?action=prioritize&type=${type}&id=${encodeURIComponent(id)}&_=${new Date().getTime()}`)
+        fetch(`${API_URL}?action=prioritize&type=${encodeURIComponent(type)}&id=${encodeURIComponent(id)}&_=${new Date().getTime()}`)
             .then(response => {
                 if (!response.ok) {
                     return response.json().then(errData => {
@@ -247,7 +155,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 console.log("Odpowiedź API (prioritize):", data);
                 if (data.success) {
                     showToast(`${data.message || 'Dodano do kolejki priorytetowej.'}`);
-                    fetchAndDisplayQueue();
+                    fetchAndDisplayQueue(); // Odśwież widok kolejki
                 } else {
                     showToast(`Błąd: ${data.message || 'Nie udało się dodać do kolejki.'}`, true);
                 }
@@ -257,7 +165,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 showToast(`Błąd sieciowy lub serwera: ${error.message}`, true);
             });
     }
-
+    
     function addModelToList() {
         const modelNameInput = document.getElementById('new-model-name');
         const statusSpan = document.getElementById('add-model-status');
@@ -276,6 +184,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 statusSpan.textContent = '';
                 if (data.success) {
                     modelNameInput.value = '';
+                    fetchAggregateDataAndUpdateModels(true); // Odśwież listę modeli
                 }
             })
             .catch(error => {
@@ -285,53 +194,70 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
             });
     }
 
-    function updateGalleryUI(galleryId, downloaded, expected, scanSessionFound) {
-        console.log(`updateGalleryUI CALLED for ${galleryId}: downloaded=${downloaded} (type: ${typeof downloaded}), expected=${expected} (type: ${typeof expected}), scanSessionFound=${scanSessionFound}`);
+    function updateGalleryUI(galleryId, downloaded, expected, scanSessionFound, titleFromServer = null, urlFromServer = null, folderFromServer = null) {
         const galleryLi = document.getElementById('gallery_li_' + galleryId);
         if (!galleryLi) { console.warn("updateGalleryUI: Nie znaleziono LI dla galerii", galleryId); return; }
-        const statusSpan = document.getElementById('status_' + galleryId);
-        const progressBar = document.getElementById('progress_bar_' + galleryId);
-        const progressContainer = document.getElementById('progress_container_' + galleryId);
-        const newlyFoundSpan = document.getElementById('newly_found_' + galleryId);
-        if (!statusSpan || !progressBar || !progressContainer || !newlyFoundSpan) {
+
+        const statusSpan = galleryLi.querySelector('.gallery-status');
+        const progressBar = galleryLi.querySelector('.progress-bar');
+        const progressContainer = galleryLi.querySelector('.progress-bar-container');
+        const newlyFoundSpan = galleryLi.querySelector('.newly-found-count');
+        const linkA = galleryLi.querySelector('.gallery-link a');
+
+        if (!statusSpan || !progressBar || !progressContainer || !newlyFoundSpan || !linkA) {
             console.warn("updateGalleryUI: Brak jednego z elementów UI dla galerii", galleryId); return;
         }
-        const expectedValFromParam = (expected !== null && expected !== undefined) ? expected : galleryLi.dataset.expected;
-        const expectedText = (expectedValFromParam === '?' || expectedValFromParam === null || expectedValFromParam === undefined || isNaN(parseInt(expectedValFromParam,10))) ? '?' : parseInt(expectedValFromParam, 10);
-        let currentDownloadedVal;
-        if (downloaded !== null && downloaded !== undefined && !isNaN(parseInt(downloaded, 10))) {
-            currentDownloadedVal = parseInt(downloaded, 10);
-        } else {
-            currentDownloadedVal = parseInt(galleryLi.dataset.downloaded, 10);
-            if (isNaN(currentDownloadedVal)) currentDownloadedVal = 0;
-        }
+
+        const expectedVal = (expected !== null && expected !== undefined) ? parseInt(expected, 10) : (galleryLi.dataset.expected !== '?' ? parseInt(galleryLi.dataset.expected, 10) : '?');
+        const expectedText = (expectedVal === '?' || isNaN(expectedVal)) ? '?' : expectedVal;
+        
+        let currentDownloadedVal = (downloaded !== null && downloaded !== undefined && !isNaN(parseInt(downloaded, 10))) ? parseInt(downloaded, 10) : (parseInt(galleryLi.dataset.downloaded, 10) || 0);
+        
         galleryLi.dataset.downloaded = currentDownloadedVal;
+        if (expectedText !== '?') galleryLi.dataset.expected = expectedText;
+
+
+        if (titleFromServer && linkA.textContent !== titleFromServer) {
+            linkA.textContent = titleFromServer;
+        }
+        if (urlFromServer && linkA.href !== urlFromServer) {
+            linkA.href = urlFromServer;
+        }
+        if (folderFromServer && linkA.title !== `Folder: ${folderFromServer}`) {
+             linkA.title = `Folder: ${folderFromServer}`;
+        }
+
+
         if (scanSessionFound !== null && scanSessionFound !== undefined && scanSessionFound > 0) {
-            newlyFoundSpan.textContent = 'Nowych: ' + scanSessionFound;
+            newlyFoundSpan.textContent = 'Znaleziono: ' + scanSessionFound;
             newlyFoundSpan.style.display = 'inline';
         } else {
             newlyFoundSpan.style.display = 'none';
         }
+
         let statusText = 'D: ' + currentDownloadedVal + '/' + expectedText;
         let progress = 0;
-        let color = 'red';
+        let colorClass = 'red';
+
         if (expectedText !== '?') {
-            const numExpected = parseInt(expectedText, 10);
-            if (numExpected > 0) {
-                 progress = (currentDownloadedVal / numExpected * 100);
-            } else if (numExpected === 0 && currentDownloadedVal === 0) {
+            if (expectedVal > 0) {
+                 progress = (currentDownloadedVal / expectedVal * 100);
+            } else if (expectedVal === 0 && currentDownloadedVal === 0) { // Ukończona pusta galeria
                 progress = 100;
             }
-            color = (progress >= 100 || (numExpected === 0 && currentDownloadedVal === 0)) ? 'green' : (currentDownloadedVal > 0 ? 'orange' : 'red');
-        } else {
-            color = currentDownloadedVal > 0 ? 'orange' : 'red';
+            colorClass = (progress >= 100 || (expectedVal === 0 && currentDownloadedVal === 0)) ? 'green' : (currentDownloadedVal > 0 ? 'orange' : 'red');
+        } else { // Oczekiwana liczba nieznana
+            colorClass = currentDownloadedVal > 0 ? 'orange' : 'red';
+            statusText = `D: ${currentDownloadedVal}/?`;
         }
+        
         statusSpan.textContent = statusText;
-        statusSpan.className = 'gallery-status ' + color;
+        statusSpan.className = 'gallery-status ' + colorClass;
+        
         const progressPercent = Math.min(100, Math.max(0, progress));
         progressBar.style.width = progressPercent.toFixed(1) + '%';
         progressBar.textContent = progressPercent.toFixed(0) + '%';
-        progressBar.className = 'progress-bar ' + color;
+        progressBar.className = 'progress-bar ' + colorClass;
         progressContainer.title = `Pobrano: ${currentDownloadedVal}/${expectedText} (${progressPercent.toFixed(1)}%)`;
     }
 
@@ -345,73 +271,92 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
             .then(data => {
                 if (!data || typeof data.timestamp === 'undefined') {
                    statusDiv.textContent = 'Oczekiwanie na status ze skryptu Python...';
-                   statusDiv.style.backgroundColor = '#fff8dc';
+                   statusDiv.style.backgroundColor = '#fff8dc'; // Kremowy
                    return;
                 }
                 statusDiv.textContent = '[' + data.timestamp + '] ' + data.message +
                                         (data.current_model ? ' | Model: ' + data.current_model : '') +
                                         (data.current_gallery_title ? ' | Galeria: ' + data.current_gallery_title : '');
-                statusDiv.style.backgroundColor = data.is_processing ? '#e0f7fa' : '#fff';
+                statusDiv.style.backgroundColor = data.is_processing ? '#e0f7fa' : '#fff'; // Jasnoniebieski / biały
+
                 const galleryThatWasProcessing = activeGalleryIdForUI;
                 const modelSanitizedThatWasProcessing = activeModelNameSanitizedForUI;
+                
                 const currentProcessingModelOriginal = data.current_model;
                 const currentProcessingModelSanitized = currentProcessingModelOriginal ? pySanitizeForQuerySelector(currentProcessingModelOriginal) : null;
+
+                // Usuń klasę 'model-processing' z poprzednio przetwarzanego modelu, jeśli inny
                 if (modelSanitizedThatWasProcessing && modelSanitizedThatWasProcessing !== currentProcessingModelSanitized) {
                     const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
                     if (oldModelLi) oldModelLi.classList.remove('model-processing');
                 }
+                // Dodaj klasę 'model-processing' do aktualnie przetwarzanego modelu
                 if (currentProcessingModelSanitized) {
                     const currentModelLi = document.querySelector(`.model-li[data-model-name="${currentProcessingModelSanitized}"]`);
                     if (currentModelLi) {
-                        currentModelLi.classList.remove('model-complete', 'model-partial');
+                        currentModelLi.classList.remove('model-complete', 'model-partial'); // Usuń inne statusy
                         currentModelLi.classList.add('model-processing');
                     }
                 }
                 activeModelNameSanitizedForUI = currentProcessingModelSanitized;
+
+
                 if (data.is_processing && data.current_gallery_id) {
                     activeGalleryIdForUI = data.current_gallery_id;
+                    // Usuń klasę 'processing' z poprzednio przetwarzanej galerii, jeśli inna
                     if (galleryThatWasProcessing && galleryThatWasProcessing !== activeGalleryIdForUI) {
                         const prevGalleryLi = document.getElementById('gallery_li_' + galleryThatWasProcessing);
                         if (prevGalleryLi) prevGalleryLi.classList.remove('processing');
                     }
+                    // Dodaj klasę 'processing' do aktualnie przetwarzanej galerii
                     const currentGalleryLi = document.getElementById('gallery_li_' + activeGalleryIdForUI);
-                    if (currentGalleryLi) currentGalleryLi.classList.add('processing');
+                    if (currentGalleryLi) {
+                         currentGalleryLi.classList.add('processing');
+                         // Otwórz nadrzędny model, jeśli nie jest otwarty
+                         const parentModelLi = currentGalleryLi.closest('li.model-li');
+                         if(parentModelLi){
+                             const nestedUl = parentModelLi.querySelector('ul.nested');
+                             const toggle = parentModelLi.querySelector('.toggle');
+                             if(nestedUl && !nestedUl.classList.contains('active')){
+                                 nestedUl.classList.add('active');
+                                 if(toggle) toggle.textContent = '−';
+                             }
+                         }
+                    }
+                    // Zaktualizuj UI dla tej galerii
                     updateGalleryUI(activeGalleryIdForUI, data.current_download_count, data.current_expected_count, data.scan_session_found_count);
-                } else if (!data.is_processing && galleryThatWasProcessing) {
-                    console.log(`Galeria ${galleryThatWasProcessing} zakończyła. Finalna aktualizacja UI z current_status.json.`);
+                
+                } else if (!data.is_processing && galleryThatWasProcessing) { // Zakończono przetwarzanie poprzedniej galerii
+                    console.log(`Galeria ${galleryThatWasProcessing} zakończyła przetwarzanie. Finalna aktualizacja UI.`);
                     const finishedGalleryLi = document.getElementById('gallery_li_' + galleryThatWasProcessing);
                     if (finishedGalleryLi) finishedGalleryLi.classList.remove('processing');
+                    // Zaktualizuj UI, ale bez scan_session_found_count (bo to koniec przetwarzania)
                     updateGalleryUI(galleryThatWasProcessing, data.current_download_count, data.current_expected_count, null);
-                    activeGalleryIdForUI = null;
-                    if(modelSanitizedThatWasProcessing && !currentProcessingModelSanitized){
-                        const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
-                        if (oldModelLi) oldModelLi.classList.remove('model-processing');
-                    }
+                    activeGalleryIdForUI = null; 
+                    triggerDelayedAggregateRefresh(); // Odśwież dane zbiorcze po chwili
+                } else if (!data.is_processing && modelSanitizedThatWasProcessing && !currentProcessingModelSanitized) {
+                    // Zakończono przetwarzanie całego modelu
+                    const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
+                    if (oldModelLi) oldModelLi.classList.remove('model-processing');
+                    activeModelNameSanitizedForUI = null;
                     triggerDelayedAggregateRefresh();
-                } else {
-                     activeGalleryIdForUI = null;
-                     if (modelSanitizedThatWasProcessing && !currentProcessingModelSanitized) {
-                         const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
-                         if (oldModelLi) {
-                             oldModelLi.classList.remove('model-processing');
-                             triggerDelayedAggregateRefresh();
-                         }
-                     }
                 }
+
+
             })
-            .catch(error => { console.error("Błąd odświeżania statusu:", error); statusDiv.textContent = 'Błąd odświeżania statusu: ' + error.message; statusDiv.style.backgroundColor = '#ffdddd'; });
+            .catch(error => { console.error("Błąd odświeżania statusu:", error); statusDiv.textContent = 'Błąd odświeżania statusu: ' + error.message; statusDiv.style.backgroundColor = '#ffcdd2'; }); // Jasnoczerwony
     }
 
-    function triggerDelayedAggregateRefresh(delay = 2000) {
+    function triggerDelayedAggregateRefresh(delay = 2500) { // Zwiększony delay
         if (aggregateRefreshTimeout) clearTimeout(aggregateRefreshTimeout);
         console.log(`Planuję odświeżenie agregatu za ${delay}ms.`);
         aggregateRefreshTimeout = setTimeout(() => {
             console.log("Uruchamiam odświeżanie danych agregatu modeli...");
-            fetchAggregateDataAndUpdateModels();
+            fetchAggregateDataAndUpdateModels(false); // false - nie wymuszaj ponownego renderowania całej listy
         }, delay);
     }
 
-    function fetchAggregateDataAndUpdateModels() {
+    function fetchAggregateDataAndUpdateModels(forceFullRender = false) {
         fetch(`${API_URL}?action=get_aggregate&_=${new Date().getTime()}`)
             .then(response => {
                 if (!response.ok) throw new Error('HTTP error! status: ' + response.status);
@@ -419,101 +364,161 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
             })
             .then(aggregateData => {
                 if (aggregateData && aggregateData.models) {
-                    console.log("Otrzymano dane agregatu, aktualizuję modele.");
-                    let anyChangeRequiringUIToggleUpdate = false;
-                    for (const modelNameOriginal in aggregateData.models) {
-                        if (aggregateData.models.hasOwnProperty(modelNameOriginal)) {
-                            const modelDataFromServer = aggregateData.models[modelNameOriginal];
-                            const sanitizedModelName = modelDataFromServer.sanitized_name || pySanitizeForQuerySelector(modelNameOriginal);
-                            const modelLiElement = document.querySelector(`.model-li[data-model-name="${sanitizedModelName}"]`);
+                    console.log("Otrzymano dane agregatu.");
+                    const modelsData = aggregateData.models;
+                    const modelNamesSorted = Object.keys(modelsData).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
-                            if (modelLiElement) {
-                                const galleriesFromServer = modelDataFromServer.galleries || {};
-                                let completedInModel = 0;
-                                const totalInModel = Object.keys(galleriesFromServer).length;
+                    if(forceFullRender) modelTreeUl.innerHTML = ''; // Wyczyść tylko przy pełnym renderowaniu
 
-                                for (const galleryId in galleriesFromServer) {
-                                    if (galleriesFromServer[galleryId].completed) {
-                                        completedInModel++;
-                                    }
-                                    const galleryLi = document.getElementById('gallery_li_' + galleryId);
-                                    const nestedUl = modelLiElement.querySelector('ul.nested');
-                                    if(galleryLi && nestedUl && nestedUl.classList.contains('active')){
-                                        const gData = galleriesFromServer[galleryId];
-                                        updateGalleryUI(galleryId, gData.downloaded, gData.expected, null);
-                                         // === AKTUALIZACJA TYTUŁU ===
-                                        const linkA = galleryLi.querySelector('.gallery-link a');
-                                        if (linkA && linkA.textContent !== gData.title) {
-                                            linkA.textContent = gData.title;
-                                            console.log(`Zaktualizowano tytuł dla ${galleryId} na "${gData.title}"`);
-                                        }
-                                        // ============================
-                                    }
-                                }
+                    modelNamesSorted.forEach(modelNameOriginal => {
+                        const modelData = modelsData[modelNameOriginal];
+                        const sanitizedModelName = modelData.sanitized_name || pySanitizeForQuerySelector(modelNameOriginal);
+                        let modelLiElement = document.querySelector(`.model-li[data-model-name="${sanitizedModelName}"]`);
+                        let nestedUl;
 
-                                if (!modelLiElement.classList.contains('model-processing')) {
-                                    let appliedClass = "";
-                                    if (totalInModel > 0 && completedInModel === totalInModel) appliedClass = "model-complete";
-                                    else if (completedInModel > 0 && completedInModel < totalInModel) appliedClass = "model-partial";
-                                    modelLiElement.classList.remove('model-complete', 'model-partial');
-                                    if(appliedClass) modelLiElement.classList.add(appliedClass);
-                                }
+                        if (!modelLiElement) { // Tworzymy LI dla modelu, jeśli nie istnieje
+                            modelLiElement = document.createElement('li');
+                            modelLiElement.className = 'model-li';
+                            modelLiElement.dataset.modelName = sanitizedModelName;
+                            
+                            const modelHeader = document.createElement('div');
+                            modelHeader.className = 'model-header';
+                            modelHeader.innerHTML = `
+                                <span class="toggle">+</span>
+                                <span class="model-name">${modelNameOriginal}</span>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar"></div>
+                                </div>
+                                <button class="btn-action" onclick="prioritizeItem('scan_model', '${modelNameOriginal.replace(/'/g, "\\'")}')" title="Skanuj, aktualizuj i dodaj brakujące galerie do kolejki pobierania">Uzupełnij Model</button>
+                                <button class="btn-action" onclick="prioritizeItem('scan_model_refresh_only', '${modelNameOriginal.replace(/'/g, "\\'")}')" title="Tylko skanuj i aktualizuj opisy/liczniki (bez dodawania do kolejki pobierania)">Odśwież Opisy</button>
+                            `;
+                            nestedUl = document.createElement('ul');
+                            nestedUl.className = 'nested';
+                            modelLiElement.appendChild(modelHeader);
+                            modelLiElement.appendChild(nestedUl);
+                            modelTreeUl.appendChild(modelLiElement);
 
-                                const modelNameSpan = modelLiElement.querySelector('.model-header .model-name');
-                                const modelProgressBar = modelLiElement.querySelector('.model-header .progress-bar');
-                                const modelProgressContainer = modelLiElement.querySelector('.model-header .progress-bar-container');
-                                const newModelText = `${modelNameOriginal} (${completedInModel}/${totalInModel})`;
-                                if (modelNameSpan && modelNameSpan.textContent !== newModelText) modelNameSpan.textContent = newModelText;
-                                const modelProgressPercent = totalInModel > 0 ? (completedInModel / totalInModel * 100) : 0;
-                                if (modelProgressBar) {
-                                    modelProgressBar.style.width = `${modelProgressPercent.toFixed(1)}%`;
-                                    modelProgressBar.textContent = `${modelProgressPercent.toFixed(0)}%`;
-                                }
-                                if (modelProgressContainer) modelProgressContainer.title = `${modelProgressPercent.toFixed(1)}% ukończonych galerii`;
-                                anyChangeRequiringUIToggleUpdate = true;
-                            }
+                            modelHeader.querySelector('.toggle').addEventListener('click', function() {
+                                nestedUl.classList.toggle('active');
+                                this.textContent = nestedUl.classList.contains('active') ? '−' : '+';
+                                if (nestedUl.classList.contains('active')) fetchAggregateDataAndUpdateModels(false); // Odśwież przy rozwijaniu
+                            });
+                        } else {
+                            nestedUl = modelLiElement.querySelector('ul.nested');
                         }
-                    }
-                    if(anyChangeRequiringUIToggleUpdate) console.log("Podsumowania modeli zaktualizowane przez dane agregatu.");
-                    const lastAggregateUpdateSpan = document.getElementById("last-aggregate-update-time");
-                    if(lastAggregateUpdateSpan) {
-                        const date = new Date();
-                        const timeString = date.getHours().toString().padStart(2, '0') + ':' +
-                                           date.getMinutes().toString().padStart(2, '0') + ':' +
-                                           date.getSeconds().toString().padStart(2, '0');
-                        lastAggregateUpdateSpan.textContent = `(Dane zbiorcze: ${timeString})`;
+
+                        // Aktualizacja nagłówka modelu (nazwa, progress)
+                        const completedInModel = modelData.completed_galleries || 0;
+                        const totalInModel = modelData.total_galleries || 0;
+                        const modelProgressPercent = modelData.model_progress || 0;
+
+                        modelLiElement.querySelector('.model-name').textContent = `${modelNameOriginal} (${completedInModel}/${totalInModel})`;
+                        const modelProgressBarDiv = modelLiElement.querySelector('.progress-bar');
+                        modelProgressBarDiv.style.width = `${modelProgressPercent.toFixed(1)}%`;
+                        modelProgressBarDiv.textContent = `${modelProgressPercent.toFixed(0)}%`;
+                        modelLiElement.querySelector('.progress-bar-container').title = `${modelProgressPercent.toFixed(1)}% ukończonych galerii`;
+                        
+                        modelLiElement.classList.remove('model-complete', 'model-partial', 'model-processing');
+                        if (modelLiElement.dataset.modelName === activeModelNameSanitizedForUI) {
+                             modelLiElement.classList.add('model-processing');
+                        } else if (totalInModel > 0 && completedInModel === totalInModel) {
+                            modelLiElement.classList.add('model-complete');
+                        } else if (completedInModel > 0 || (totalInModel > 0 && completedInModel < totalInModel)) { // Lub jeśli jest jakikolwiek postęp
+                            modelLiElement.classList.add('model-partial');
+                        }
+
+
+                        // Aktualizacja lub tworzenie galerii, jeśli UL jest aktywny lub pełne renderowanie
+                        if (nestedUl.classList.contains('active') || forceFullRender) {
+                            if(forceFullRender || !nestedUl.dataset.galleriesLoaded) nestedUl.innerHTML = ''; // Wyczyść galerie tylko przy pełnym renderowaniu lub pierwszym ładowaniu rozwiniętego
+                            
+                            const galleriesFromServer = modelData.galleries || {};
+                            const galleryIdsSorted = Object.keys(galleriesFromServer).sort((a,b) => {
+                                const titleA = galleriesFromServer[a].title || a;
+                                const titleB = galleriesFromServer[b].title || b;
+                                return titleA.toLowerCase().localeCompare(titleB.toLowerCase());
+                            });
+
+                            galleryIdsSorted.forEach(galleryId => {
+                                const gData = galleriesFromServer[galleryId];
+                                let galleryLi = document.getElementById('gallery_li_' + galleryId);
+                                if (!galleryLi) {
+                                    galleryLi = document.createElement('li');
+                                    galleryLi.className = 'gallery-li';
+                                    galleryLi.id = 'gallery_li_' + galleryId;
+                                    galleryLi.innerHTML = `
+                                        <span class="gallery-link">
+                                            <span class="spinner"></span>
+                                            <a href="${gData.url}" target="_blank" title="Folder: ${gData.folder || 'Brak'}">${gData.title}</a>
+                                        </span>
+                                        <div class="gallery-controls">
+                                            <span class="newly-found-count"></span>
+                                            <div class="progress-bar-container">
+                                                <div class="progress-bar"></div>
+                                            </div>
+                                            <span class="gallery-status"></span>
+                                            <button class="btn-action" onclick="prioritizeItem('gallery', '${galleryId.replace(/'/g, "\\'")}')" title="Uzupełnij tę galerię priorytetowo">Uzupełnij</button>
+                                            <a href="${gData.url}" target="_blank" class="btn-action" title="Otwórz stronę źródłową galerii">Źródło</a>
+                                        </div>
+                                    `;
+                                    nestedUl.appendChild(galleryLi);
+                                }
+                                // Aktualizuj UI dla tej galerii z nowymi danymi
+                                updateGalleryUI(galleryId, gData.downloaded, gData.expected, null, gData.title, gData.url, gData.folder);
+                                if (galleryId === activeGalleryIdForUI && statusDiv.style.backgroundColor.includes('e0f7fa')) { // Jeśli przetwarzana
+                                     galleryLi.classList.add('processing');
+                                } else {
+                                     galleryLi.classList.remove('processing');
+                                }
+                            });
+                             nestedUl.dataset.galleriesLoaded = "true";
+                        }
+                    });
+                     if(forceFullRender && modelNamesSorted.length === 0) {
+                         modelTreeUl.innerHTML = '<li>Brak modeli na liście lub w bazie danych. Dodaj modelki do pliku `lista.txt` i uruchom skrypt Python.</li>';
+                     } else if (forceFullRender && modelTreeUl.querySelector('.loader')) {
+                         modelTreeUl.querySelector('.loader').remove();
+                     }
+
+
+                    console.log("Dane agregatu modeli zaktualizowane.");
+                    const lastUpdateSpan = document.getElementById("last-aggregate-update-time");
+                    if(lastUpdateSpan) {
+                        const now = new Date();
+                        lastUpdateSpan.textContent = `(Dane z DB: ${now.toLocaleTimeString()})`;
                     }
                 }
             })
-            .catch(error => { console.error("Błąd odświeżania agregatu modeli:", error); });
+            .catch(error => {
+                 console.error("Błąd odświeżania agregatu modeli:", error);
+                 modelTreeUl.innerHTML = '<li>Wystąpił błąd podczas ładowania danych modeli. Sprawdź konsolę.</li>';
+            });
     }
 
+
     document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('.toggle').forEach(span => {
-            span.addEventListener('click', function() {
-                const nestedUl = this.closest('li.model-li').querySelector('ul.nested');
-                nestedUl.classList.toggle('active');
-                this.textContent = nestedUl.classList.contains('active') ? '−' : '+';
-                if (nestedUl.classList.contains('active')) {
-                    fetchAggregateDataAndUpdateModels();
-                }
-            });
-        });
-        updateStatus();
-        fetchAndDisplayQueue();
-        setInterval(updateStatus, 2800);
-        setInterval(fetchAggregateDataAndUpdateModels, 15000);
+        // Usunięto iterację po .toggle, bo lista modeli jest dynamiczna
+        updateStatus(); // Pierwsze pobranie statusu
+        fetchAggregateDataAndUpdateModels(true); // Pierwsze pobranie i renderowanie listy modeli
+        fetchAndDisplayQueue(); // Pierwsze pobranie kolejki
+
+        setInterval(updateStatus, 2800); // Regularne odświeżanie statusu
+        setInterval(() => fetchAggregateDataAndUpdateModels(false), 25000); // Regularne odświeżanie agregatu w tle
+        setInterval(fetchAndDisplayQueue, 30000); // Okresowe odświeżanie kolejki w modalu
     });
 
+    // --- Zarządzanie Kolejką (pozostaje bez większych zmian, korzysta z globalnej API_URL) ---
     let draggedItem = null;
-    let queueDataCache = [];
+    let queueDataCache = []; // Lokalny cache kolejki dla UI
 
     function getQueueItemDisplay(item) {
         let display = `Typ: ${item.type}`;
         if ((item.type === 'scan_model' || item.type === 'scan_model_refresh_only') && typeof item.data === 'string') {
             display += ` | Model: ${item.data}`;
         } else if (item.type === 'gallery' && typeof item.data === 'object' && item.data !== null) {
-            display += ` | Galeria: ${item.data.title || item.data.id} (Model: ${item.data.model_name || '?'})`;
+            const galleryTitle = item.data.title || item.data.id || 'Nieznana galeria';
+            const modelName = item.data.model_name || '?';
+            display += ` | Galeria: ${galleryTitle} (Model: ${modelName})`;
         } else {
             display += ` | Dane: ${JSON.stringify(item.data).substring(0, 50)}...`;
         }
@@ -521,9 +526,9 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
     }
 
     function populateQueueList(queue) {
-        queueDataCache = queue;
+        queueDataCache = queue; // Zaktualizuj lokalny cache
         const list = document.getElementById('priority-queue-list');
-        list.innerHTML = '';
+        list.innerHTML = ''; // Wyczyść listę
         if (queue.length === 0) {
             list.innerHTML = '<li>Kolejka jest pusta.</li>';
         } else {
@@ -531,7 +536,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 const li = document.createElement('li');
                 li.className = 'queue-item';
                 li.draggable = true;
-                li.dataset.index = index;
+                li.dataset.index = index; // Użyj indeksu do identyfikacji
 
                 li.addEventListener('dragstart', handleDragStart);
                 li.addEventListener('dragover', handleDragOver);
@@ -550,16 +555,14 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
 
                 const controls = document.createElement('div');
                 controls.className = 'queue-item-controls';
-
                 const removeBtn = document.createElement('button');
                 removeBtn.textContent = 'Usuń';
                 removeBtn.onclick = () => {
-                    queueDataCache.splice(index, 1);
-                    populateQueueList(queueDataCache);
+                    queueDataCache.splice(index, 1); // Usuń z lokalnego cache
+                    populateQueueList(queueDataCache); // Przerenderuj listę z cache
                     updateQueueCount();
                 };
                 controls.appendChild(removeBtn);
-
                 li.appendChild(controls);
                 list.appendChild(li);
             });
@@ -572,17 +575,18 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
     }
 
     function handleDragStart(e) {
-        draggedItem = e.target;
+        draggedItem = e.target.closest('.queue-item'); // Upewnij się, że to LI
+        if (!draggedItem) return;
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', e.target.dataset.index);
-        setTimeout(() => e.target.classList.add('dragging'), 0);
+        e.dataTransfer.setData('text/plain', draggedItem.dataset.index);
+        setTimeout(() => draggedItem.classList.add('dragging'), 0);
     }
 
     function handleDragOver(e) {
         e.preventDefault();
         const target = e.target.closest('.queue-item');
         if (target && target !== draggedItem) {
-            document.querySelectorAll('.queue-item').forEach(it => it.classList.remove('over'));
+            document.querySelectorAll('.queue-item.over').forEach(it => it.classList.remove('over'));
             target.classList.add('over');
         }
     }
@@ -590,20 +594,22 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
     function handleDrop(e) {
         e.preventDefault();
         const target = e.target.closest('.queue-item');
-        if (target && target !== draggedItem) {
+        if (target && target !== draggedItem && draggedItem) {
             const fromIndex = parseInt(draggedItem.dataset.index, 10);
             const toIndex = parseInt(target.dataset.index, 10);
 
             const [movedItem] = queueDataCache.splice(fromIndex, 1);
             queueDataCache.splice(toIndex, 0, movedItem);
 
-            populateQueueList(queueDataCache);
+            populateQueueList(queueDataCache); // Przerenderuj z zaktualizowanym cache
         }
-        document.querySelectorAll('.queue-item').forEach(it => it.classList.remove('over'));
+        document.querySelectorAll('.queue-item.over').forEach(it => it.classList.remove('over'));
     }
-
+    
     function handleDragEnd(e) {
-        e.target.classList.remove('dragging');
+        if(draggedItem) draggedItem.classList.remove('dragging');
+        draggedItem = null;
+        document.querySelectorAll('.queue-item.over').forEach(it => it.classList.remove('over'));
     }
 
     function fetchAndDisplayQueue() {
@@ -615,18 +621,18 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
             .catch(error => {
                 console.error("Błąd pobierania kolejki:", error);
                 document.getElementById('priority-queue-list').innerHTML = '<li>Błąd ładowania kolejki.</li>';
-                updateQueueCount();
+                updateQueueCount(); // Zaktualizuj licznik nawet przy błędzie
             });
     }
 
     function openQueueModal() {
         document.getElementById('queue-modal').style.display = 'block';
-        fetchAndDisplayQueue();
+        fetchAndDisplayQueue(); // Zawsze pobierz świeżą listę przy otwarciu
     }
 
     function closeQueueModal() {
         document.getElementById('queue-modal').style.display = 'none';
-        document.getElementById('queue-status').textContent = '';
+        document.getElementById('queue-status').textContent = ''; // Wyczyść status modala
     }
 
     function saveQueueOrder() {
@@ -637,7 +643,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         fetch(`${API_URL}?action=update_queue`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(queueDataCache)
+            body: JSON.stringify(queueDataCache) // Wyślij zaktualizowany cache
         })
         .then(response => response.json())
         .then(data => {
@@ -646,12 +652,12 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
                 statusSpan.style.color = 'green';
                 showToast('Kolejka priorytetowa została zaktualizowana.');
             } else {
-                statusSpan.textContent = `Błąd: ${data.message}`;
+                statusSpan.textContent = `Błąd: ${data.message || 'Nieznany błąd serwera.'}`;
                 statusSpan.style.color = 'red';
-                showToast(`Błąd zapisu kolejki: ${data.message}`, true);
+                showToast(`Błąd zapisu kolejki: ${data.message || 'Nieznany błąd.'}`, true);
             }
             setTimeout(() => { statusSpan.textContent = ''; }, 3000);
-            updateQueueCount();
+            updateQueueCount(); // Zaktualizuj licznik (na wypadek gdyby serwer inaczej przetworzył)
         })
         .catch(error => {
             console.error('Błąd zapisu kolejki:', error);
@@ -661,6 +667,7 @@ if (file_exists(STATUS_JSON_AGGREGATE_PATH)) {
         });
     }
 
+    // Zamknięcie modala po kliknięciu poza nim
     window.onclick = function(event) {
         const modal = document.getElementById('queue-modal');
         if (event.target == modal) {
