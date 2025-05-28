@@ -6,9 +6,8 @@ import zipfile
 import datetime
 import subprocess
 import logging
-import re # Do parsowania daty z nazwy pliku
+import re 
 
-# Dodaj ścieżkę do katalogu nadrzędnego, aby importować moduły aplikacji
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import config_handler 
@@ -21,28 +20,25 @@ BACKUP_DIR_NAME = "_backups"
 BACKUP_BASE_PATH = os.path.join(SCRIPT_DIR, BACKUP_DIR_NAME)
 
 # --- Konfiguracja Ścieżek Narzędzi MySQL ---
-# DOSTOSUJ TE ŚCIEŻKI, JEŚLI NARZĘDZIA NIE SĄ W SYSTEMOWEJ ZMIENNEJ PATH
-MYSQLDUMP_PATH = r"C:\xampp\mysql\bin\mysqldump.exe" # Podaj pełną ścieżkę
-MYSQL_CLIENT_PATH = r"C:\xampp\mysql\bin\mysql.exe"    # Podaj pełną ścieżkę
+MYSQLDUMP_PATH = r"C:\xampp\mysql\bin\mysqldump.exe" 
+MYSQL_CLIENT_PATH = r"C:\xampp\mysql\bin\mysql.exe"    
 
 FILES_TO_BACKUP_EXTENSIONS = ['.py', '.php', '.json', '.crx', '.txt']
-FILES_TO_IGNORE_ON_BACKUP = [ # Zmieniono nazwę dla jasności
+FILES_TO_IGNORE_ON_BACKUP = [ 
     BACKUP_DIR_NAME,
     "__pycache__",
     ".git",
     ".vscode",
     "script.log", 
     "backup_manager.log", 
-    "Modelki" # Folder Modelki jest ignorowany przy backupie plików programu
+    "Modelki" 
 ]
-# Foldery i pliki, które NIE POWINNY być usuwane/nadpisywane podczas przywracania plików programu
-# Obejmuje to sam skrypt backupu, jego log, katalog backupów oraz config.json (który zawiera dane DB)
 FILES_TO_PRESERVE_ON_RESTORE = [
-    os.path.basename(__file__), # Nazwa tego skryptu
+    os.path.basename(__file__), 
     "backup_manager.log",
     BACKUP_DIR_NAME,
-    config_handler.constants.CONFIG_FILENAME, # Używamy stałej z config_handler
-    "script.log.bak", # Potencjalne backupy logów
+    "config.json", # Zmiana, aby używać bezpośrednio nazwy pliku
+    "script.log.bak", 
     "script.log.1",
     "script.log.2",
     "script.log.3"
@@ -50,7 +46,6 @@ FILES_TO_PRESERVE_ON_RESTORE = [
 
 
 def ensure_backup_directory_exists():
-    """Tworzy katalog na backupy, jeśli nie istnieje i zwraca jego ścieżkę."""
     if not os.path.exists(BACKUP_BASE_PATH):
         try:
             os.makedirs(BACKUP_BASE_PATH)
@@ -60,11 +55,15 @@ def ensure_backup_directory_exists():
             return None
     return BACKUP_BASE_PATH
 
-def backup_program_files():
+def generate_timestamp():
+    """Generuje spójny znacznik czasu dla pary backupów."""
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+def backup_program_files(timestamp):
+    """Tworzy archiwum ZIP z plikami programu z podanym znacznikiem czasu."""
     backup_dir = ensure_backup_directory_exists()
     if not backup_dir: return False
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     archive_name = f"program_files_backup_{timestamp}.zip"
     archive_path = os.path.join(backup_dir, archive_name)
 
@@ -72,7 +71,6 @@ def backup_program_files():
     try:
         with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             for root, dirs, files in os.walk(SCRIPT_DIR):
-                # Ignorowanie określonych folderów na poziomie głównym
                 if os.path.abspath(root) == os.path.abspath(SCRIPT_DIR):
                     dirs[:] = [d for d in dirs if d not in FILES_TO_IGNORE_ON_BACKUP and not d.startswith('.')]
                 
@@ -81,7 +79,6 @@ def backup_program_files():
                     relative_file_path_for_check = os.path.relpath(file_path, SCRIPT_DIR)
                     
                     should_ignore_file = False
-                    # Sprawdź, czy plik lub jego ścieżka nadrzędna zaczyna się od ignorowanego elementu
                     for ignored_item in FILES_TO_IGNORE_ON_BACKUP:
                         if relative_file_path_for_check.startswith(ignored_item + os.sep) or \
                            relative_file_path_for_check == ignored_item:
@@ -102,7 +99,8 @@ def backup_program_files():
         logger.error(f"Błąd podczas tworzenia backupu plików programu: {e}", exc_info=True)
         return False
 
-def backup_mysql_database():
+def backup_mysql_database(timestamp):
+    """Wykonuje zrzut bazy danych MySQL z podanym znacznikiem czasu."""
     backup_dir = ensure_backup_directory_exists()
     if not backup_dir: return False
 
@@ -122,8 +120,7 @@ def backup_mysql_database():
     db_name = db_config["database"]["value"]
     db_port = str(db_config.get("port", {}).get("value", 3306))
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"db_{db_name}_backup_{timestamp}.sql"
+    backup_filename = f"db_{db_name}_backup_{timestamp}.sql" # Użyj przekazanego timestampu
     backup_filepath = os.path.join(backup_dir, backup_filename)
 
     logger.info(f"Rozpoczynam backup bazy danych '{db_name}' do: {backup_filepath}")
@@ -171,61 +168,67 @@ def backup_mysql_database():
             except Exception as e_rem:
                 logger.error(f"Nie udało się usunąć niekompletnego pliku backupu {backup_filepath}: {e_rem}")
 
-def list_backups():
-    """Listuje dostępne backupy plików i bazy danych."""
+def list_backup_sets():
+    """Listuje dostępne zestawy backupów (plik ZIP i SQL z tym samym znacznikiem czasu)."""
     backup_dir = ensure_backup_directory_exists()
-    if not backup_dir: return [], []
+    if not backup_dir: return []
 
-    program_backups = []
-    db_backups = []
+    backups = {} # Słownik: timestamp -> {"files": filename_zip, "db": filename_sql, "datetime": dt_obj}
     
     for filename in os.listdir(backup_dir):
         if filename.startswith("program_files_backup_") and filename.endswith(".zip"):
-            try:
-                # Regex do wyciągnięcia daty i godziny
-                match = re.search(r"program_files_backup_(\d{8}_\d{6})\.zip", filename)
-                if match:
-                    dt_str = match.group(1)
-                    dt_obj = datetime.datetime.strptime(dt_str, "%Y%m%d_%H%M%S")
-                    program_backups.append({"filename": filename, "datetime": dt_obj, "type": "files"})
-            except ValueError:
-                logger.warning(f"Nie udało się sparsować daty z nazwy pliku backupu plików: {filename}")
+            match = re.search(r"program_files_backup_(\d{8}_\d{6})\.zip", filename)
+            if match:
+                ts = match.group(1)
+                if ts not in backups: backups[ts] = {}
+                backups[ts]["files"] = filename
+                try: backups[ts]["datetime"] = datetime.datetime.strptime(ts, "%Y%m%d_%H%M%S")
+                except ValueError: pass # Ignoruj, jeśli data już ustawiona przez plik DB
         elif filename.startswith("db_") and filename.endswith(".sql"):
-            try:
-                match = re.search(r"db_.+?_backup_(\d{8}_\d{6})\.sql", filename)
-                if match:
-                    dt_str = match.group(1)
-                    dt_obj = datetime.datetime.strptime(dt_str, "%Y%m%d_%H%M%S")
-                    db_backups.append({"filename": filename, "datetime": dt_obj, "type": "db"})
-            except ValueError:
-                logger.warning(f"Nie udało się sparsować daty z nazwy pliku backupu bazy: {filename}")
-                
-    program_backups.sort(key=lambda x: x["datetime"], reverse=True)
-    db_backups.sort(key=lambda x: x["datetime"], reverse=True)
-    return program_backups, db_backups
+            match = re.search(r"db_.+?_backup_(\d{8}_\d{6})\.sql", filename)
+            if match:
+                ts = match.group(1)
+                if ts not in backups: backups[ts] = {}
+                backups[ts]["db"] = filename
+                try: backups[ts]["datetime"] = datetime.datetime.strptime(ts, "%Y%m%d_%H%M%S")
+                except ValueError: pass
+
+    # Filtruj, aby zachować tylko kompletne zestawy i konwertuj do listy
+    complete_sets = []
+    for ts, data in backups.items():
+        if "files" in data and "db" in data and "datetime" in data:
+            complete_sets.append({
+                "timestamp_str": ts,
+                "files_backup_name": data["files"],
+                "db_backup_name": data["db"],
+                "datetime_obj": data["datetime"]
+            })
+            
+    complete_sets.sort(key=lambda x: x["datetime_obj"], reverse=True)
+    return complete_sets
+
 
 def restore_program_files(zip_backup_path):
-    """Przywraca pliki programu z wybranego archiwum ZIP."""
     if not os.path.exists(zip_backup_path):
         logger.error(f"Plik backupu plików programu nie istnieje: {zip_backup_path}")
         return False
 
     logger.info(f"Rozpoczynam przywracanie plików programu z: {zip_backup_path}")
-    logger.warning("UWAGA: Istniejące pliki (z wyjątkiem chronionych) w katalogu projektu zostaną nadpisane!")
-
+    
     try:
-        # Najpierw usuń stare pliki (z wyjątkiem chronionych)
+        # Usuwanie starych plików z zachowaniem chronionych
+        preserved_paths = [os.path.join(SCRIPT_DIR, p) for p in FILES_TO_PRESERVE_ON_RESTORE]
         for item in os.listdir(SCRIPT_DIR):
             item_path = os.path.join(SCRIPT_DIR, item)
-            if item not in FILES_TO_PRESERVE_ON_RESTORE:
+            if item_path not in preserved_paths: # Sprawdzamy pełne ścieżki
                 if os.path.isfile(item_path) or os.path.islink(item_path):
                     os.unlink(item_path)
                     logger.debug(f"Usunięto plik: {item_path}")
-                elif os.path.isdir(item_path):
-                    shutil.rmtree(item_path)
-                    logger.debug(f"Usunięto katalog: {item_path}")
+                elif os.path.isdir(item_path): # Tylko jeśli nie jest to folder _backups
+                    if item != BACKUP_DIR_NAME: # Dodatkowe zabezpieczenie
+                        shutil.rmtree(item_path)
+                        logger.debug(f"Usunięto katalog: {item_path}")
         
-        # Rozpakuj archiwum
         with zipfile.ZipFile(zip_backup_path, 'r') as zipf:
             zipf.extractall(SCRIPT_DIR)
         logger.info(f"Pomyślnie przywrócono pliki programu z {zip_backup_path} do {SCRIPT_DIR}")
@@ -235,13 +238,12 @@ def restore_program_files(zip_backup_path):
         return False
 
 def restore_mysql_database(sql_backup_path):
-    """Przywraca bazę danych MySQL z pliku .sql."""
     if not os.path.exists(sql_backup_path):
         logger.error(f"Plik backupu bazy danych nie istnieje: {sql_backup_path}")
         return False
 
     try:
-        config_handler.load_config(force_reload=True) # Załaduj najnowszą konfigurację
+        config_handler.load_config(force_reload=True)
         db_config = config_handler.current_config.get("database")
         if not db_config or not all(db_config.get(k, {}).get("value") for k in ["host", "user", "database"]):
             logger.error("Konfiguracja bazy danych w config.json jest niekompletna.")
@@ -256,23 +258,17 @@ def restore_mysql_database(sql_backup_path):
     db_name = db_config["database"]["value"]
     db_port = str(db_config.get("port", {}).get("value", 3306))
 
-    logger.info(f"Rozpoczynam przywracanie bazy danych '{db_name}' z pliku: {sql_backup_path}")
-    logger.warning(f"UWAGA: Istniejąca baza danych '{db_name}' zostanie NAJPIERW USUNIĘTA, a następnie utworzona na nowo i wypełniona danymi z backupu!")
+    logger.info(f"Przywracanie bazy danych '{db_name}' z pliku: {sql_backup_path}")
     
-    if input("Czy na pewno chcesz kontynuować? (tak/nie): ").lower() != 'tak':
-        logger.info("Przywracanie bazy danych anulowane przez użytkownika.")
-        return False
-
     # 1. Usuń starą bazę danych
     drop_command = [MYSQL_CLIENT_PATH, f"--host={db_host}", f"--port={db_port}", f"--user={db_user}"]
     if db_password: drop_command.append(f"--password={db_password}")
-    drop_command.append("-e", f"DROP DATABASE IF EXISTS {db_name}")
+    drop_command.extend(["-e", f"DROP DATABASE IF EXISTS {db_name}"]) # Dodano IF EXISTS dla bezpieczeństwa
     
     executable_client_path = MYSQL_CLIENT_PATH
     if ' ' in executable_client_path and not (executable_client_path.startswith('"') and executable_client_path.endswith('"')):
             executable_client_path = f'"{executable_client_path}"'
     drop_command[0] = executable_client_path
-
 
     logger.info(f"Usuwanie istniejącej bazy danych '{db_name}'...")
     try:
@@ -280,9 +276,14 @@ def restore_mysql_database(sql_backup_path):
         stdout_drop, stderr_drop_bytes = process_drop.communicate()
         stderr_drop = stderr_drop_bytes.decode(errors='replace') if stderr_drop_bytes else ""
         if process_drop.returncode != 0:
-            logger.error(f"Błąd podczas usuwania bazy danych '{db_name}' (kod: {process_drop.returncode}). Komunikat: {stderr_drop}")
-            return False
-        logger.info(f"Baza danych '{db_name}' usunięta (lub nie istniała).")
+            # Nie traktuj jako błąd krytyczny, jeśli baza nie istniała
+            if "Unknown database" not in stderr_drop and "Can't drop database" not in stderr_drop :
+                 logger.error(f"Błąd podczas usuwania bazy danych '{db_name}' (kod: {process_drop.returncode}). Komunikat: {stderr_drop}")
+                 return False
+            else:
+                 logger.info(f"Baza '{db_name}' nie istniała lub nie można było jej usunąć (może być OK). Kontynuuję.")
+        else:
+            logger.info(f"Baza danych '{db_name}' usunięta (jeśli istniała).")
     except FileNotFoundError:
         logger.error(f"Nie znaleziono programu mysql client. Ścieżka: '{MYSQL_CLIENT_PATH}'. Upewnij się, że jest poprawna.")
         return False
@@ -293,7 +294,7 @@ def restore_mysql_database(sql_backup_path):
     # 2. Utwórz nową, pustą bazę danych
     create_command = [MYSQL_CLIENT_PATH, f"--host={db_host}", f"--port={db_port}", f"--user={db_user}"]
     if db_password: create_command.append(f"--password={db_password}")
-    create_command.append("-e", f"CREATE DATABASE {db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+    create_command.extend(["-e", f"CREATE DATABASE {db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"])
     create_command[0] = executable_client_path
 
     logger.info(f"Tworzenie nowej bazy danych '{db_name}'...")
@@ -305,7 +306,7 @@ def restore_mysql_database(sql_backup_path):
             logger.error(f"Błąd podczas tworzenia bazy danych '{db_name}' (kod: {process_create.returncode}). Komunikat: {stderr_create}")
             return False
         logger.info(f"Baza danych '{db_name}' utworzona pomyślnie.")
-    except Exception as e: # FileNotFoundError jest już obsłużone wyżej
+    except Exception as e:
         logger.error(f"Nieoczekiwany błąd podczas tworzenia bazy danych: {e}", exc_info=True)
         return False
 
@@ -317,7 +318,7 @@ def restore_mysql_database(sql_backup_path):
 
     logger.info(f"Importowanie danych do bazy '{db_name}' z pliku {sql_backup_path}...")
     try:
-        with open(sql_backup_path, 'r', encoding='utf-8') as f_in: # Pliki SQL to zwykle tekst
+        with open(sql_backup_path, 'r', encoding='utf-8') as f_in: 
             process_import = subprocess.Popen(import_command, stdin=f_in, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
             stdout_import, stderr_import_bytes = process_import.communicate()
             stderr_import = stderr_import_bytes.decode(errors='replace') if stderr_import_bytes else ""
@@ -338,94 +339,131 @@ def restore_mysql_database(sql_backup_path):
         return False
 
 
-def display_backup_list(backups, backup_type_name):
-    """Wyświetla ponumerowaną listę backupów."""
-    if not backups:
-        logger.info(f"Nie znaleziono żadnych backupów typu: {backup_type_name}.")
+def display_and_select_backup_set(backup_sets):
+    """Wyświetla ponumerowaną listę zestawów backupów i pozwala wybrać jeden."""
+    if not backup_sets:
+        logger.info("Nie znaleziono żadnych kompletnych zestawów backupów (pliki + baza danych).")
         return None
     
-    print(f"\nDostępne backupy dla '{backup_type_name}':")
-    for i, backup_info in enumerate(backups):
-        print(f"  {i+1}. {backup_info['filename']} (Data: {backup_info['datetime'].strftime('%Y-%m-%d %H:%M:%S')})")
+    print("\nDostępne kompletne zestawy backupów (posortowane od najnowszych):")
+    for i, backup_set in enumerate(backup_sets):
+        print(f"  {i+1}. Data: {backup_set['datetime_obj'].strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"     Pliki: {backup_set['files_backup_name']}")
+        print(f"     Baza:  {backup_set['db_backup_name']}")
     
     while True:
         try:
-            choice = input(f"Wybierz numer backupu '{backup_type_name}' do przywrócenia (lub 0 aby anulować): ")
+            choice = input("Wybierz numer zestawu backupu do przywrócenia (lub 0 aby anulować): ")
             choice_int = int(choice)
-            if 0 <= choice_int <= len(backups):
+            if 0 <= choice_int <= len(backup_sets):
                 if choice_int == 0: return None
-                return backups[choice_int - 1] # Zwróć wybrany słownik backup_info
+                return backup_sets[choice_int - 1]
             else:
                 print("Nieprawidłowy wybór. Spróbuj ponownie.")
         except ValueError:
             print("Nieprawidłowe wejście. Wprowadź liczbę.")
 
+
+def handle_restore_set():
+    """Obsługuje proces przywracania kompletnego zestawu backupu."""
+    logger.info(">>> Rozpoczynanie procesu przywracania z backupu <<<")
+    backup_sets = list_backup_sets()
+
+    if not backup_sets:
+        return
+
+    selected_set = display_and_select_backup_set(backup_sets)
+    if not selected_set:
+        logger.info("Nie wybrano zestawu backupu do przywrócenia.")
+        return
+
+    logger.warning("-" * 50)
+    logger.warning("UWAGA: Wybrano przywracanie następującego zestawu backupu:")
+    logger.warning(f"  Data: {selected_set['datetime_obj'].strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.warning(f"  Pliki programu z: {selected_set['files_backup_name']}")
+    logger.warning(f"  Baza danych z:    {selected_set['db_backup_name']}")
+    logger.warning("Ta operacja NADPISZE bieżące pliki programu (z wyjątkiem chronionych)")
+    logger.warning("oraz CAŁKOWICIE USUNIE i ZASTĄPI bieżącą bazę danych.")
+    logger.warning("-" * 50)
+    
+    if input("Czy na pewno chcesz kontynuować z przywracaniem tego zestawu? (tak/nie): ").lower() != 'tak':
+        logger.info("Przywracanie zestawu backupu anulowane przez użytkownika.")
+        return
+
+    files_backup_path = os.path.join(BACKUP_BASE_PATH, selected_set["files_backup_name"])
+    db_backup_path = os.path.join(BACKUP_BASE_PATH, selected_set["db_backup_name"])
+
+    logger.info("--- Rozpoczynanie przywracania plików programu ---")
+    files_restored_ok = restore_program_files(files_backup_path)
+    if files_restored_ok:
+        logger.info("--- Przywracanie plików programu zakończone pomyślnie ---")
+    else:
+        logger.error("!!! Błąd podczas przywracania plików programu. Sprawdź logi. Rozważ ręczne przywrócenie. !!!")
+        # Można zapytać, czy kontynuować z bazą danych
+        if input("Wystąpił błąd przywracania plików. Czy mimo to kontynuować z przywracaniem bazy danych? (tak/nie): ").lower() != 'tak':
+            logger.info("Przywracanie bazy danych anulowane po błędzie przywracania plików.")
+            return
+
+    logger.info("--- Rozpoczynanie przywracania bazy danych ---")
+    db_restored_ok = restore_mysql_database(db_backup_path) # Potwierdzenie jest w tej funkcji
+    if db_restored_ok:
+        logger.info("--- Przywracanie bazy danych zakończone pomyślnie ---")
+    else:
+        logger.error("!!! Błąd podczas przywracania bazy danych. Sprawdź logi. Baza może być w niekonsystentnym stanie! !!!")
+
+    if files_restored_ok and db_restored_ok:
+        logger.info(">>> Pełne przywracanie z zestawu backupu zakończone pomyślnie. <<<")
+    else:
+        logger.warning(">>> Proces przywracania zakończony z błędami. Sprawdź dokładnie logi. <<<")
+
+
 def main_menu():
-    """Wyświetla główne menu i obsługuje wybór użytkownika."""
     while True:
-        print("\n--- Zarządzanie Backupem ---")
+        print("\n--- Menedżer Backupów ---")
         print("1. Wykonaj pełny backup (pliki programu i baza danych)")
-        print("2. Przywróć z backupu")
+        print("2. Przywróć z kompletnego zestawu backupu")
         print("3. Wyjdź")
         choice = input("Wybierz opcję: ")
 
         if choice == '1':
-            logger.info(">>> Rozpoczynanie procesu backupu <<<")
-            files_ok = backup_program_files()
-            db_ok = backup_mysql_database()
-            if files_ok and db_ok: logger.info(">>> Wszystkie operacje backupu zakończone pomyślnie! <<<")
-            else: logger.error(">>> Wystąpiły błędy podczas procesu backupu. Sprawdź logi. <<<")
+            logger.info(">>> Rozpoczynanie procesu tworzenia nowego backupu <<<")
+            current_timestamp = generate_timestamp() # Generuj jeden znacznik czasu dla obu operacji
+            files_ok = backup_program_files(current_timestamp)
+            db_ok = False # Domyślnie, na wypadek gdyby backup plików się nie udał
+            if files_ok: # Wykonaj backup bazy tylko jeśli backup plików się udał
+                db_ok = backup_mysql_database(current_timestamp)
+            
+            if files_ok and db_ok: 
+                logger.info(">>> Wszystkie operacje tworzenia backupu zakończone pomyślnie! <<<")
+            else: 
+                logger.error(">>> Wystąpiły błędy podczas tworzenia backupu. Sprawdź logi. <<<")
         elif choice == '2':
-            handle_restore()
+            handle_restore_set()
         elif choice == '3':
             logger.info("Zamykanie menedżera backupu.")
             break
         else:
             print("Nieprawidłowy wybór, spróbuj ponownie.")
 
-def handle_restore():
-    """Obsługuje proces przywracania."""
-    logger.info(">>> Rozpoczynanie procesu przywracania z backupu <<<")
-    program_backups, db_backups = list_backups()
-
-    if not program_backups and not db_backups:
-        logger.info("Brak dostępnych backupów do przywrócenia.")
-        return
-
-    # Przywracanie plików programu
-    selected_program_backup = None
-    if program_backups:
-        selected_program_backup_info = display_backup_list(program_backups, "Pliki Programu")
-        if selected_program_backup_info:
-            selected_program_backup_path = os.path.join(BACKUP_BASE_PATH, selected_program_backup_info["filename"])
-            if input(f"Czy na pewno chcesz przywrócić pliki programu z '{selected_program_backup_info['filename']}'? (tak/nie): ").lower() == 'tak':
-                restore_program_files(selected_program_backup_path)
-            else:
-                logger.info("Przywracanie plików programu anulowane.")
-        else:
-            logger.info("Nie wybrano backupu plików programu do przywrócenia.")
-    else:
-        logger.info("Brak backupów plików programu do przywrócenia.")
-
-    # Przywracanie bazy danych
-    selected_db_backup = None
-    if db_backups:
-        selected_db_backup_info = display_backup_list(db_backups, "Baza Danych")
-        if selected_db_backup_info:
-            selected_db_backup_path = os.path.join(BACKUP_BASE_PATH, selected_db_backup_info["filename"])
-            # Potwierdzenie jest już w funkcji restore_mysql_database
-            restore_mysql_database(selected_db_backup_path) 
-        else:
-            logger.info("Nie wybrano backupu bazy danych do przywrócenia.")
-    else:
-        logger.info("Brak backupów bazy danych do przywrócenia.")
-    
-    logger.info(">>> Proces przywracania zakończony (lub anulowany). Sprawdź logi. <<<")
-
-
 if __name__ == "__main__":
     log_file_handler = logging.FileHandler(os.path.join(SCRIPT_DIR, 'backup_manager.log'), mode='a', encoding='utf-8')
     log_file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)-8s] [%(name)-20s:%(lineno)4d] %(message)s'))
     logging.getLogger().addHandler(log_file_handler)
     
+    # Użyj config_handler.constants tylko jeśli jest dostępny
+    config_file_name = "config.json" 
+    try:
+        if hasattr(config_handler, 'constants') and hasattr(config_handler.constants, 'CONFIG_FILENAME'):
+            config_file_name = config_handler.constants.CONFIG_FILENAME
+    except AttributeError: # Na wypadek, gdyby config_handler.constants nie istniał
+        pass
+    
+    # Aktualizacja FILES_TO_PRESERVE_ON_RESTORE na podstawie nazwy pliku konfiguracyjnego
+    if config_file_name not in FILES_TO_PRESERVE_ON_RESTORE:
+        # Usuń stary wpis jeśli był domyślny i dodaj nowy, jeśli jest inny
+        try: FILES_TO_PRESERVE_ON_RESTORE.remove("config.json")
+        except ValueError: pass
+        FILES_TO_PRESERVE_ON_RESTORE.append(config_file_name)
+
+
     main_menu()
