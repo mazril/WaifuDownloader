@@ -35,7 +35,7 @@ def kill_chrome_processes():
 
         if killed_something:
             logger.info("Pomyślnie wysłano sygnały zamknięcia dla Chrome/ChromeDriver.")
-            time.sleep(3) 
+            time.sleep(3)
         else:
             logger.info("Nie znaleziono procesów Chrome/ChromeDriver do zamknięcia lub wystąpił błąd (kontynuuję).")
     except FileNotFoundError:
@@ -53,17 +53,14 @@ def _create_driver_instance_for_thread(q_result, adblock_path_local):
         options.add_argument("--start-maximized")
         options.add_argument("--disable-infobars")
         options.add_argument("--no-first-run")
-        
-        # === OPCJE WYŁĄCZAJĄCE OSZCZĘDZANIE ENERGII W TLE ===
+
         options.add_argument("--disable-background-timer-throttling")
         options.add_argument("--disable-backgrounding-occluded-windows")
         options.add_argument("--disable-renderer-backgrounding")
-        # Dodatkowe, które mogą pomóc:
-        options.add_argument("--disable-features=VisibilityAwarePageOcclusion") 
-        if sys.platform == "win32": # Tylko dla Windows
+        options.add_argument("--disable-features=VisibilityAwarePageOcclusion")
+        if sys.platform == "win32":
             options.add_argument("--disable-features=CalculateNativeWinOcclusion")
         logger.info("Dodano opcje Chrome: --disable-background-*, --disable-features=VisibilityAwarePageOcclusion itp.")
-        # =====================================================
 
         if os.path.exists(adblock_path_local):
             logger.info(f"Dodaję rozszerzenie AdBlock z: {adblock_path_local}")
@@ -73,9 +70,9 @@ def _create_driver_instance_for_thread(q_result, adblock_path_local):
             logger.warning(f"Nie znaleziono rozszerzenia AdBlock w: {adblock_path_local}")
 
         logger.info("Uruchamiam uc.Chrome()...")
-        driver = uc.Chrome(service=service, options=options)
+        driver = uc.Chrome(service=service, options=options) # Usunięto version_main, aby uc.Chrome sam wykrył
         logger.info("Instancja uc.Chrome() uruchomiona. Sprawdzam responsywność...")
-        _ = driver.current_url 
+        _ = driver.current_url
         logger.info("Przeglądarka responsywna.")
 
         if adblock_loaded_successfully:
@@ -95,9 +92,9 @@ def _create_driver_instance_for_thread(q_result, adblock_path_local):
 def create_driver_with_retry():
     for attempt in range(1, constants.MAX_DRIVER_STARTUP_ATTEMPTS + 1):
         logger.info(f"Próba uruchomienia przeglądarki ({attempt}/{constants.MAX_DRIVER_STARTUP_ATTEMPTS})...")
-        if attempt > 1: 
+        if attempt > 1:
              kill_chrome_processes()
-             time.sleep(2) 
+             time.sleep(2)
 
         driver = None
         thread_result_queue = queue.Queue()
@@ -121,6 +118,10 @@ def create_driver_with_retry():
                     logger.error(f"Błąd w wątku tworzenia drivera (próba {attempt}): {result}", exc_info=False)
                     if attempt >= constants.MAX_DRIVER_STARTUP_ATTEMPTS:
                         raise constants.RestartRequiredError(f"Błąd tworzenia drivera po wielu próbach: {result}")
+                elif result is None:
+                    logger.error(f"Wątek tworzenia drivera zakończył się, ale nie zwrócił instancji drivera (próba {attempt}).")
+                    if attempt >= constants.MAX_DRIVER_STARTUP_ATTEMPTS:
+                        raise constants.RestartRequiredError("Nie udało się utworzyć instancji drivera (zakończono bez rezultatu).")
                 else:
                     logger.info("Przeglądarka uruchomiona pomyślnie!")
                     return result
@@ -128,7 +129,7 @@ def create_driver_with_retry():
                 logger.error(f"Błąd: Pusta kolejka po zakończeniu wątku tworzenia drivera (próba {attempt}).")
                 if attempt >= constants.MAX_DRIVER_STARTUP_ATTEMPTS:
                     raise constants.RestartRequiredError("Nieznany błąd tworzenia drivera (pusta kolejka).")
-        
+
         logger.info("Czekam 5s przed następną próbą...")
         time.sleep(5)
 
@@ -204,7 +205,7 @@ def safe_driver_get(driver, url):
     logger.info(f"Przechodzę do: {url}")
     try:
         driver.get(url)
-        pause = random.uniform(3.5, 6.0) 
+        pause = random.uniform(3.5, 6.0)
         logger.debug(f"Pauza po driver.get: {pause:.2f}s")
         time.sleep(pause)
         check_and_handle_block(driver, url)
@@ -240,11 +241,11 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
     elems = []
     try: elems = driver.find_elements(By.CSS_SELECTOR, selector)
     except WebDriverException as e: logger.warning(f"SUT: Błąd przy początkowym find_elements: {e}", exc_info=False)
-    
+
     last_count_on_page = len(elems)
     last_new_time = time.time()
     refresh_count = 0
-    ymal_consecutive_detections = 0 
+    ymal_consecutive_detections = 0
     scroll_counter = 0
 
     if gallery_id:
@@ -264,29 +265,30 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
 
         check_and_handle_block(driver, driver.current_url)
         scroll_counter += 1
-        effective_jump = int(jump * random.uniform(0.85, 1.15)) 
+        effective_jump = int(jump * random.uniform(0.85, 1.15))
         logger.debug(f"SUT Scroll #{scroll_counter}: +{effective_jump}px.")
         driver.execute_script(f"window.scrollBy(0, {effective_jump});")
-        time.sleep(random.uniform(p_min, p_max)) 
+        time.sleep(random.uniform(p_min, p_max))
 
         try:
-            spinner = driver.find_element(By.ID, "loading-spinner") 
+            spinner = driver.find_element(By.ID, "loading-spinner")
             if spinner and spinner.is_displayed() and _is_element_in_viewport(driver, spinner):
                 logger.info(f"SUT: 🍥 Wykryto WIDOCZNY spinner. Czekam do {spinner_wait}s...")
                 spinner_start = time.time()
                 while time.time() - spinner_start < spinner_wait:
                     if main.shutdown_requested: break
-                    time.sleep(0.5) 
+                    time.sleep(0.5)
                     try:
                         spinner_now = driver.find_element(By.ID, "loading-spinner")
                         if not spinner_now.is_displayed() or not _is_element_in_viewport(driver, spinner_now):
                             logger.info("SUT:   🍥 Spinner zniknął lub jest poza ekranem. Kontynuuję."); last_new_time = time.time(); break
                     except NoSuchElementException: logger.info("SUT:   🍥 Spinner zniknął (NSE). Kontynuuję."); last_new_time = time.time(); break
                 else: logger.info(f"SUT:   🍥 Timeout ({spinner_wait}s) czekania na spinner. Kontynuuję.")
-        except NoSuchElementException: pass 
+        except NoSuchElementException: pass
         except Exception as e: logger.warning(f"SUT:   ⚠️ Błąd spinnera: {e}", exc_info=False)
         if main.shutdown_requested: break
 
+        # Logika YMAL
         if not allow_up_scroll:
             try:
                 ymal_header_elements = driver.find_elements(By.XPATH, "//h1[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'you may also like:')]")
@@ -295,7 +297,7 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
                     ymal_y_position = ymal_element.location['y']
                     viewport_upper_half_end_px = driver.execute_script("return window.pageYOffset + window.innerHeight * 0.5;")
 
-                    if ymal_y_position < viewport_upper_half_end_px: 
+                    if ymal_y_position < viewport_upper_half_end_px: # YMAL jest w górnej połowie
                         ymal_consecutive_detections += 1
                         logger.warning(f"SUT: ⚠️ YMAL w GÓRNEJ POŁOWIE EKRANU ({ymal_consecutive_detections}/{max_ymal_corr}).")
                         if ymal_consecutive_detections <= max_ymal_corr:
@@ -311,23 +313,29 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
                                 if main.shutdown_requested: break
                                 driver.execute_script(f"window.scrollBy(0, {jump // 2});"); time.sleep(0.2)
                             if main.shutdown_requested: break
-                            last_new_time = time.time(); continue 
-                        else: logger.warning(f"SUT: ⚠️ Osiągnięto limit ({max_ymal_corr}) korekt YMAL. Kończę."); break
-                    else: ymal_consecutive_detections = 0 
-                else: ymal_consecutive_detections = 0
-            except Exception as e_ymal: logger.debug(f"SUT: Błąd YMAL: {e_ymal}", exc_info=False)
-        else: ymal_consecutive_detections = 0 
+                            last_new_time = time.time(); continue # Przejdź do następnej iteracji, aby ponownie ocenić sytuację
+                        else:
+                            logger.warning(f"SUT: ⚠️ Osiągnięto limit ({max_ymal_corr}) korekt YMAL. Kończę."); break
+                    # else: # YMAL nie jest w górnej połowie - NIE resetujemy tutaj licznika
+                    #    ymal_consecutive_detections = 0
+                # else: # Nagłówek YMAL nie znaleziony lub niewidoczny - NIE resetujemy tutaj licznika
+                #    ymal_consecutive_detections = 0
+            except Exception as e_ymal:
+                logger.debug(f"SUT: Błąd podczas sprawdzania YMAL: {e_ymal}", exc_info=False)
+        elif allow_up_scroll : # Jeśli allow_up_scroll jest True (np. skanowanie strony modelki)
+             ymal_consecutive_detections = 0 # Resetuj licznik YMAL, bo ta logika nie powinna tu działać
+
         if main.shutdown_requested: break
-        
+
         current_elems_list = []
         try: current_elems_list = driver.find_elements(By.CSS_SELECTOR, selector)
         except WebDriverException as e: logger.warning(f"SUT: Błąd find_elements w pętli: {e}", exc_info=False)
-        
+
         current_found = len(current_elems_list)
         if current_found > last_count_on_page:
             logger.info(f"SUT: ➕ Znaleziono {current_found - last_count_on_page} nowych (łącznie: {current_found}).")
             last_count_on_page = current_found; last_new_time = time.time(); elems = current_elems_list
-            ymal_consecutive_detections = 0 
+            ymal_consecutive_detections = 0 # Zresetuj licznik YMAL, gdy znaleziono nowe elementy docelowe
             if gallery_id: reporting.update_current_status(message=f"Szukanie... ({current_found})", model=model_name, gallery=gallery_title, gallery_id=gallery_id, is_processing=True, scan_session_found_count=current_found, downloaded_count=initial_downloaded_count, expected_count=current_expected_count_for_reporting)
 
         elapsed = time.time() - last_new_time
@@ -339,16 +347,18 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
             break
         if elapsed < wait_for_new: continue
 
+        # Logika odświeżania, jeśli minął czas `wait_for_new` i nie znaleziono nowych elementów
         if refresh_count < max_r:
             refresh_count += 1
             logger.info(f"SUT: 🔄 Timeout! Odświeżam pozycję (#{refresh_count}/{max_r})...")
-            up_r, down_r = (r_jumps, r_jumps) if allow_up_scroll else (up_j, down_j)
+            up_r, down_r = (r_jumps, r_jumps) if allow_up_scroll else (up_j, down_j) # Użyj r_jumps dla modelu, up_j/down_j dla galerii
             logger.debug(f"SUT:   Odświeżanie GÓRA ({up_r}x -{jump}px)")
             for _ in range(up_r): driver.execute_script(f"window.scrollBy(0, -{jump});"); time.sleep(0.3)
             time.sleep(random.uniform(0.8, 1.5))
             logger.debug(f"SUT:   Odświeżanie DÓŁ ({down_r}x +{jump}px)")
             for _ in range(down_r): driver.execute_script(f"window.scrollBy(0, {jump});"); time.sleep(0.3)
-            last_new_time = time.time(); ymal_consecutive_detections = 0
+            last_new_time = time.time()
+            # NIE resetujemy ymal_consecutive_detections tutaj, aby dać szansę na jego kumulację
         else:
             logger.warning(f"SUT: 🛑 Max odświeżeń. Kończę. Znaleziono {current_found}/{expected_count or '?'}.")
             if len(current_elems_list) > len(elems): elems = current_elems_list

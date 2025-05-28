@@ -13,7 +13,7 @@
             "description": "Maksymalna pauza (s) pomiędzy kolejnymi 'skokami' przewijania."
         },
         "jump_distance": {
-            "value": 380,
+            "value": 320,
             "description": "Odległość przewijania (px)."
         },
         "spinner_wait_time": {
@@ -25,7 +25,7 @@
             "description": "Skoki góra/dół przy odświeżaniu na stronie modelu."
         },
         "gallery_up_jumps": {
-            "value": 5,
+            "value": 7,
             "description": "Skoki w górę przy odświeżaniu w galerii."
         },
         "gallery_down_jumps": {
