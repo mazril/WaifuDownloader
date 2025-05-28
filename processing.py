@@ -4,7 +4,7 @@ import time
 import random
 import traceback
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import NoSuchElementException, WebDriverException
+from selenium.common.exceptions import NoSuchElementException, WebDriverException, TimeoutException, JavascriptException
 import logging
 
 import constants
@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 def _scan_new_model_page(driver, model_name_original):
     """Skanuje stronę modelki, aby znaleźć linki do galerii, ich opisy i liczbę zdjęć."""
     logger.info(f"Rozpoczynam skanowanie strony dla modelki: {model_name_original}")
+    model_id = db_manager.get_or_create_model(model_name_original) # Upewnij się, że model istnieje w DB
+    if not model_id:
+        logger.error(f"Nie udało się uzyskać/stworzyć ID dla modelki {model_name_original}. Pomijam skanowanie.")
+        return []
+        
     sanitized_model_name_for_url = utils.sanitize_foldername(model_name_original).lower().replace('_', '-')
     model_url = f"{constants.BASE_URL_SITE}/model/{sanitized_model_name_for_url}"
 
@@ -38,9 +43,9 @@ def _scan_new_model_page(driver, model_name_original):
             model_name=model_name_original, gallery_title="Skanowanie strony modelki"
         )
 
-        scanned_galleries = []
+        scanned_galleries_data_for_db = []
         if not link_elements:
-            logger.error(f"Nie znaleziono żadnych elementów galerii dla '{model_name_original}' używając '{gallery_link_selector}'. Sprawdź selektor lub stronę.")
+            logger.warning(f"Nie znaleziono żadnych elementów galerii dla '{model_name_original}' używając '{gallery_link_selector}'.")
             return []
 
         logger.info(f"Znaleziono {len(link_elements)} potencjalnych linków/tytułów. Przetwarzam...")
@@ -54,475 +59,638 @@ def _scan_new_model_page(driver, model_name_original):
                 if gallery_url in processed_urls: continue
                 processed_urls.add(gallery_url)
 
-                title = link_el.text.strip()
-                if not title: title = utils.get_gallery_id(gallery_url)
+                gallery_id_from_url = utils.get_gallery_id(gallery_url)
+                if not gallery_id_from_url or gallery_id_from_url.startswith("error_"):
+                    logger.warning(f"Nie udało się uzyskać poprawnego ID galerii z URL: {gallery_url}. Pomijam.")
+                    continue
 
-                count = None
+                original_title_from_scan = link_el.text.strip()
+                if not original_title_from_scan: original_title_from_scan = gallery_id_from_url # Fallback
+
+                expected_count_from_scan = None
                 try:
                     grid_item_container = link_el.find_element(By.XPATH, "./ancestor::div[contains(@class, 'grid-item')]")
                     if grid_item_container:
                         count_span = grid_item_container.find_element(By.CSS_SELECTOR, "span.ms-1")
                         count_text = count_span.text.strip()
-                        if count_text.isdigit(): count = int(count_text)
-                        logger.debug(f"  Licznik dla '{title}': {count if count is not None else 'N/A'} (tekst: '{count_text}')")
-                    else: logger.debug(f"  Brak kontenera 'grid-item' dla '{title}'.")
-                except NoSuchElementException: logger.debug(f"  Brak licznika (span.ms-1) dla '{title}' (NSE).")
-                except Exception as e: logger.warning(f"  Błąd ekstrakcji licznika dla '{title}': {e}", exc_info=False)
+                        if count_text.isdigit(): expected_count_from_scan = int(count_text)
+                except NoSuchElementException: pass # Ignoruj, jeśli nie ma licznika
+                except Exception as e_count: logger.warning(f"Błąd ekstrakcji licznika dla '{original_title_from_scan}': {e_count}", exc_info=False)
 
-                scanned_galleries.append({'url': gallery_url, 'title': title, 'count': count})
+                gallery_data = {
+                    "gallery_id": gallery_id_from_url,
+                    "model_id": model_id,
+                    "url": gallery_url,
+                    "original_title": original_title_from_scan,
+                    "determined_title": None, # Na tym etapie determined_title jest nieznany
+                    "folder_path": None,      # Zostanie ustawione później
+                    "expected_count": expected_count_from_scan,
+                    "downloaded_count": 0,    # Nowe galerie mają 0 pobranych
+                    "status": "pending_check", # Domyślny status dla nowo znalezionych
+                    "last_processed_timestamp": None,
+                    "error_message": None
+                }
+                # Zapisz lub zaktualizuj w bazie (ON DUPLICATE KEY UPDATE obsłuży aktualizację URL, original_title, expected_count)
+                # Jeśli galeria już istnieje, zaktualizujemy tylko te pola, które mogliśmy odczytać ze skanu strony modelki.
+                # Ważne: nie nadpisujemy statusu czy downloaded_count, jeśli galeria była już przetwarzana.
+                # Dlatego używamy `update_gallery_smart`
+                db_manager.update_gallery_smart(gallery_data, only_if_newer_scan_data=True)
+                scanned_galleries_data_for_db.append(gallery_data) # Dodajemy do listy, która będzie zwracana (choć teraz zapis jest w locie)
+
 
             except WebDriverException as wde: logger.warning(f"Błąd WebDrivera (może StaleElement) przy linku #{idx+1}: {wde}. Pomijam.")
             except Exception as e: logger.warning(f"Błąd przetwarzania linku #{idx+1} ({gallery_url}): {e}", exc_info=False)
 
-        logger.info(f"Zakończono skanowanie dla '{model_name_original}'. Znaleziono {len(scanned_galleries)} unikalnych galerii.")
-        return scanned_galleries
+        logger.info(f"Zakończono skanowanie dla '{model_name_original}'. Przetworzono/zaktualizowano {len(scanned_galleries_data_for_db)} galerii w DB.")
+        return scanned_galleries_data_for_db # Zwracamy listę przetworzonych danych (może być pusta)
     except constants.RestartRequiredError: raise
-    except Exception as e: logger.exception(f"Błąd skanowania {model_name_original}: {e}"); return []
+    except Exception as e: logger.exception(f"Krytyczny błąd skanowania strony modelki {model_name_original}: {e}"); return []
 
-def _determine_descriptive_foldername_base(driver, gallery_url, original_gallery_title_from_list, model_name_original_for_ai=None):
-    folder_base_name = ""
+
+def _get_page_js_variable_title(driver):
+    """Próbuje pobrać wartość zmiennej JavaScript 'title' ze strony."""
     try:
-        tags = driver.find_elements(By.CSS_SELECTOR, "div.pb-2 a.btn")
-        cosplay = next((t.text.strip() for t in tags if '/cosplay/' in t.get_attribute('href')), "")
-        fandom = next((t.text.strip() for t in tags if '/fandom/' in t.get_attribute('href')), "")
-        if cosplay and fandom: folder_base_name = f"{cosplay} - {fandom}"
-        elif cosplay: folder_base_name = cosplay
-        elif fandom: folder_base_name = fandom
-        if folder_base_name: logger.info(f"Nazwa z tagów (dla folderu): {folder_base_name}")
-    except Exception as e: logger.warning(f"Błąd przy szukaniu tagów dla nazwy folderu: {e}", exc_info=False)
+        # Ustawienie timeoutu dla wykonania skryptu
+        driver.set_script_timeout(5) # 5 sekund na wykonanie skryptu
+        page_js_title = driver.execute_script(
+            "try { if (typeof title !== 'undefined' && title !== null) { return String(title); } else { return null;} } catch (e) { return null; }"
+        )
+        if page_js_title and isinstance(page_js_title, str) and page_js_title.strip():
+            logger.info(f"Pobrano tytuł ze zmiennej JS 'title': \"{page_js_title}\"")
+            return page_js_title.strip()
+    except TimeoutException:
+        logger.warning("Timeout podczas próby pobrania zmiennej JS 'title'.")
+    except JavascriptException as je:
+        logger.warning(f"Błąd JavaScript podczas próby pobrania zmiennej 'title': {je}")
+    except Exception as e:
+        logger.warning(f"Nieoczekiwany błąd podczas pobierania zmiennej JS 'title': {e}")
+    return None
 
-    if not folder_base_name:
-        page_title = driver.title
-        if page_title:
-            logger.info(f"Tytuł strony do AI (dla nazwy folderu): {page_title}")
-            if services.initialize_ai_model():
-                negative_prompts_for_ai = [model_name_original_for_ai] if model_name_original_for_ai and isinstance(model_name_original_for_ai, str) else []
-                ai_name = services.extract_gallery_name_t5(page_title, negative_prompts_list=negative_prompts_for_ai)
-                processed_name = services.post_process_ai_title(ai_name)
-                if processed_name:
-                    folder_base_name = processed_name
-                    logger.info(f"Nazwa z AI (dla folderu): {folder_base_name}")
-                else: logger.warning(f"AI nie zwróciło użytecznej nazwy (dla folderu) z '{ai_name}'.")
-            else: logger.warning("Model AI niedostępny, nie można użyć do ustalenia nazwy folderu.")
-        else: logger.warning("Brak tytułu strony, nie można użyć AI do ustalenia nazwy folderu.")
 
-    if not folder_base_name and original_gallery_title_from_list:
-        logger.info(f"Używam oryginalnego tytułu '{original_gallery_title_from_list}' jako bazy dla nazwy folderu.")
-        folder_base_name = original_gallery_title_from_list
+def _extract_cosplay_fandom_tags(driver):
+    """Ekstrahuje tagi cosplay i fandom ze strony."""
+    cosplay_tags = []
+    fandom_tags = []
+    try:
+        # Selektor dla tagów - może wymagać dostosowania do aktualnej struktury strony
+        # Poprzedni był "div.pb-2 a.btn", przykład użytkownika miał <center>...<a>...</a>
+        # Spróbujmy bardziej ogólny selektor, który może złapać oba przypadki
+        tag_elements = driver.find_elements(By.CSS_SELECTOR, "a.btn[href*='/cosplay/'], a.btn[href*='/fandom/']")
+        if not tag_elements: # Spróbuj znaleźć w <center> jeśli pierwszy selektor zawiedzie
+             tag_elements = driver.find_elements(By.XPATH, "//center//a[contains(@class, 'btn') and (contains(@href, '/cosplay/') or contains(@href, '/fandom/'))]")
 
-    return utils.sanitize_foldername(folder_base_name or f"Galeria_{utils.get_gallery_id(gallery_url) or 'ID_Brak'}")
 
-def determine_gallery_folder_path(model_data_dir, descriptive_base_name, gallery_id):
-    safe_id = utils.sanitize_foldername(gallery_id)
-    if descriptive_base_name and descriptive_base_name != f"Galeria_{safe_id}" and descriptive_base_name != "Nienazwana_Galeria":
-        final_name = f"{descriptive_base_name}_{safe_id}"
-    else:
-        final_name = safe_id if safe_id else "Nienazwana_Galeria_BrakID"
-    return os.path.join(model_data_dir, utils.sanitize_foldername(final_name))
+        for tag_el in tag_elements:
+            href = tag_el.get_attribute('href')
+            text = tag_el.text.strip()
+            if href and text:
+                if '/cosplay/' in href:
+                    cosplay_tags.append(text)
+                elif '/fandom/' in href:
+                    fandom_tags.append(text)
+        if cosplay_tags: logger.info(f"Znaleziono tagi cosplay: {cosplay_tags}")
+        if fandom_tags: logger.info(f"Znaleziono tagi fandom: {fandom_tags}")
+    except Exception as e:
+        logger.warning(f"Błąd podczas ekstrakcji tagów cosplay/fandom: {e}", exc_info=False)
+    return list(set(cosplay_tags)), list(set(fandom_tags)) # Zwraca unikalne tagi
 
-def process_single_gallery(driver, model_name_original, gallery_info_scraped):
+
+def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_input): # Zmieniono argumenty
     config_handler.load_config()
-    model_name_sanitized = utils.sanitize_foldername(model_name_original)
     model_id = db_manager.get_or_create_model(model_name_original)
-    if not model_id: logger.error(f"Nie udało się uzyskać ID modelki {model_name_original}. Pomijam."); return False
+    if not model_id: 
+        logger.error(f"Nie udało się uzyskać ID dla modelki {model_name_original}. Pomijam galerię {gallery_id_input}.")
+        return False
 
-    gallery_url = gallery_info_scraped['url']
-    title_from_scrape_or_queue = gallery_info_scraped['title']
-    expected_count_from_scan = gallery_info_scraped.get('count')
-    gallery_id = utils.get_gallery_id(gallery_url)
+    gallery_id = gallery_id_input # Używamy przekazanego ID
+    gallery_entry_db = db_manager.get_gallery(gallery_id) # Pobierz aktualne dane z DB
 
-    if not gallery_id: logger.error(f"Brak ID dla URL: {gallery_url}. Pomijam."); return False
+    if not gallery_entry_db:
+        logger.error(f"Nie znaleziono galerii o ID {gallery_id} w bazie danych dla modelki {model_name_original}. Pomijam.")
+        # To nie powinno się zdarzyć, jeśli _scan_new_model_page dodało wpis
+        return False
 
-    gallery_entry = db_manager.get_gallery(gallery_id)
-    original_title_for_display = (gallery_entry.get("determined_title") if gallery_entry else None) or \
-                                 (gallery_entry.get("original_title") if gallery_entry else None) or \
-                                 title_from_scrape_or_queue or gallery_id
+    # Użyj original_title z DB jako fallback, jeśli nic lepszego nie znajdziemy
+    current_original_title = gallery_entry_db.get("original_title") or gallery_id
+    title_for_reporting = gallery_entry_db.get("determined_title") or current_original_title
 
-    model_data_dir = data_manager.get_model_data_dir(model_name_sanitized)
-    initial_downloaded_count = gallery_entry.get("downloaded_count", 0) if gallery_entry else 0
-
-    logger.debug(f"PSG: ID: {gallery_id} ('{original_title_for_display}'), Oczekiwane (scan/q): {expected_count_from_scan}, Pobrane (DB): {initial_downloaded_count}")
-    reporting.update_current_status("Przygotowanie galerii...", model=model_name_original, gallery=original_title_for_display, gallery_id=gallery_id, is_processing=True, downloaded_count=initial_downloaded_count, expected_count=expected_count_from_scan or (gallery_entry.get("expected_count") if gallery_entry else None))
+    reporting.update_current_status(
+        "Przygotowanie galerii...", model=model_name_original, gallery=title_for_reporting, 
+        gallery_id=gallery_id, is_processing=True, 
+        downloaded_count=gallery_entry_db.get("downloaded_count", 0),
+        expected_count=gallery_entry_db.get("expected_count")
+    )
 
     try:
         driver_utils.safe_driver_get(driver, gallery_url)
-        determined_title = (gallery_entry.get("determined_title") if gallery_entry else None) or _determine_descriptive_foldername_base(driver, gallery_url, title_from_scrape_or_queue, model_name_original)
-        folder_path = (gallery_entry.get("folder_path") if gallery_entry else None) or determine_gallery_folder_path(model_data_dir, determined_title, gallery_id)
-        os.makedirs(folder_path, exist_ok=True)
+        
+        # 1. Pobierz page_js_title
+        page_js_title = _get_page_js_variable_title(driver)
+        
+        # 2. Zaktualizuj original_title w DB, jeśli page_js_title jest lepszy
+        if page_js_title and page_js_title != current_original_title:
+            logger.info(f"Aktualizuję original_title dla galerii {gallery_id} na: \"{page_js_title}\" (poprzedni: \"{current_original_title}\")")
+            db_manager.execute_query("UPDATE galleries SET original_title = %s WHERE gallery_id = %s", (page_js_title, gallery_id), commit=True)
+            current_original_title = page_js_title # Zaktualizuj zmienną lokalną
+            gallery_entry_db["original_title"] = page_js_title # Zaktualizuj lokalny słownik
 
-        expected_count = expected_count_from_scan
-        if expected_count is None: expected_count = gallery_entry.get("expected_count") if gallery_entry else None
-        else: logger.info(f"PSG: Licznik (scan/q): {expected_count}")
+        # 3. Ekstrahuj tagi cosplay/fandom
+        cosplay_hints, fandom_hints = _extract_cosplay_fandom_tags(driver)
+        positive_ai_hints = list(set(cosplay_hints + fandom_hints)) # Połącz i usuń duplikaty
 
-        current_status = gallery_entry.get("status") if gallery_entry else 'pending_check'
-        should_check_gallery_page_count = (current_status not in ["completed", "completed_with_tolerance"]) or (expected_count is None)
-        if should_check_gallery_page_count:
-            logger.info(f"PSG: Spr. licznika na str. galerii '{gallery_id}' (obecny: {expected_count}).")
-            try:
-                count_el = driver.find_element(By.CSS_SELECTOR, "h1 > span.ms-1"); count_txt = count_el.text.strip()
-                if count_txt.isdigit():
-                    count_page = int(count_txt); logger.info(f"PSG: Licznik ze str. galerii: {count_page}.")
-                    if expected_count is None or count_page > expected_count: expected_count = count_page; logger.info(f"PSG: Aktualizuję expected na {count_page}.")
-                    elif count_page < expected_count: logger.warning(f"PSG: Licznik ze str. ({count_page}) < znanego ({expected_count}). Pozostaję przy większym.")
-                else: logger.warning(f"PSG: Tekst licznika '{count_txt}' nie jest liczbą.")
-            except NoSuchElementException: logger.warning(f"PSG: Brak licznika ('h1 > span.ms-1') na str. galerii '{gallery_id}'.")
-            except Exception as e: logger.warning(f"PSG: Błąd pob. licznika ze str. galerii: {e}", exc_info=False)
-        else: logger.info(f"PSG: Pomijam spr. licznika na str. galerii (status: {current_status}, expected: {expected_count}).")
+        # 4. Przygotuj tekst dla AI i wywołaj AI
+        text_for_ai = page_js_title if page_js_title else current_original_title
+        ai_raw_title = ""
+        determined_title_from_ai = ""
 
-        logger.info(f"PSG: Ostateczny expected_count dla '{determined_title}': {expected_count or '?'}")
-        current_files_on_disk = set(os.listdir(folder_path)) if os.path.exists(folder_path) else set()
-        final_dl_count = len(current_files_on_disk); new_dl_session = 0
-
-        if expected_count is not None and final_dl_count >= expected_count:
-            logger.info(f"PSG: Galeria '{determined_title}' ({gallery_id}) kompletna ({final_dl_count}/{expected_count}). Pomijam."); imgs_elements = []
+        if services.initialize_ai_model(): # Upewnij się, że model AI jest gotowy
+            logger.info(f"Przekazuję do AI dla galerii {gallery_id}: \"{text_for_ai}\", neg: [\"{model_name_original}\"], hints: {positive_ai_hints}")
+            ai_raw_title = services.extract_gallery_name_t5(
+                text_for_ai,
+                negative_prompts_list=[model_name_original],
+                positive_hints_list=positive_ai_hints
+            )
+            determined_title_from_ai = services.post_process_ai_title(ai_raw_title)
+            if determined_title_from_ai:
+                logger.info(f"AI ustaliło tytuł dla {gallery_id}: \"{determined_title_from_ai}\" (surowy: \"{ai_raw_title}\")")
+                gallery_entry_db["determined_title"] = determined_title_from_ai # Zapisz do lokalnego słownika
+                db_manager.execute_query("UPDATE galleries SET determined_title = %s WHERE gallery_id = %s", (determined_title_from_ai, gallery_id), commit=True)
+            else:
+                logger.warning(f"AI nie zwróciło użytecznego tytułu dla galerii {gallery_id} z tekstu \"{text_for_ai}\". Surowa odpowiedź AI: \"{ai_raw_title}\"")
         else:
-            reporting.update_current_status(f"Przygotowanie do scrolla", model=model_name_original, gallery=determined_title, gallery_id=gallery_id, is_processing=True, downloaded_count=final_dl_count, expected_count=expected_count)
-            imgs_elements = driver_utils.scroll_until_timeout(driver, 'div.photo-item a[href]', expected_count=expected_count, allow_up_scroll=False, gallery_id=gallery_id, model_name=model_name_original, gallery_title=determined_title, initial_downloaded_count=final_dl_count, current_expected_count_for_reporting=expected_count)
+            logger.warning("Model AI niedostępny, pomijam ustalanie determined_title przez AI.")
 
-        if imgs_elements:
-            logger.info(f"PSG: Pobieram dla {len(imgs_elements)} linków w '{determined_title}'. Na dysku: {final_dl_count}.")
-            reporting.update_current_status(f"Pobieranie... ({final_dl_count})", model=model_name_original, gallery=determined_title, gallery_id=gallery_id, is_processing=True, downloaded_count=final_dl_count, scan_session_found_count=len(imgs_elements), expected_count=expected_count)
-            for el in imgs_elements:
-                if main.shutdown_requested: logger.info(f"PSG: Przerwano pobieranie dla {gallery_id}."); break
+        # 5. Ustal nazwę folderu
+        title_for_folder_base = determined_title_from_ai if determined_title_from_ai else current_original_title
+        # Zawsze dodajemy ID galerii dla unikalności folderu
+        sanitized_folder_base = utils.sanitize_foldername(title_for_folder_base)
+        gallery_folder_name = f"{sanitized_folder_base}_{gallery_id}"
+        
+        model_data_dir = data_manager.get_model_data_dir(utils.sanitize_foldername(model_name_original))
+        folder_path = os.path.join(model_data_dir, gallery_folder_name)
+        
+        if gallery_entry_db.get("folder_path") != folder_path: # Zapisz, jeśli się zmieniła lub była NULL
+            db_manager.execute_query("UPDATE galleries SET folder_path = %s WHERE gallery_id = %s", (folder_path, gallery_id), commit=True)
+            gallery_entry_db["folder_path"] = folder_path
+        
+        os.makedirs(folder_path, exist_ok=True)
+        logger.info(f"Folder galerii: {folder_path}")
+
+        # 6. Sprawdź/zaktualizuj expected_count
+        expected_count_from_db = gallery_entry_db.get("expected_count")
+        final_expected_count = expected_count_from_db # Domyślnie użyj tego z bazy (mógł być ze skanu strony modelki)
+
+        # Spróbuj pobrać licznik ze strony galerii, jeśli nie ma go w DB lub jeśli status nie jest "completed"
+        should_check_page_count = (final_expected_count is None) or \
+                                  (gallery_entry_db.get("status") not in ["completed", "completed_with_tolerance"])
+        if should_check_page_count:
+            logger.info(f"Sprawdzanie licznika na stronie galerii {gallery_id} (obecny w DB: {final_expected_count})...")
+            try:
+                count_el = driver.find_element(By.CSS_SELECTOR, "h1 > span.ms-1") # Selektor z oryginalnego kodu
+                count_txt = count_el.text.strip()
+                if count_txt.isdigit():
+                    count_page = int(count_txt)
+                    logger.info(f"Licznik ze strony galerii: {count_page}.")
+                    if final_expected_count is None or count_page > final_expected_count:
+                        final_expected_count = count_page
+                        logger.info(f"Aktualizuję expected_count dla {gallery_id} na {final_expected_count} (z było {expected_count_from_db}).")
+                        db_manager.execute_query("UPDATE galleries SET expected_count = %s WHERE gallery_id = %s", (final_expected_count, gallery_id), commit=True)
+                        gallery_entry_db["expected_count"] = final_expected_count
+                    elif count_page < final_expected_count:
+                         logger.warning(f"Licznik ze strony ({count_page}) jest mniejszy niż znany w DB ({final_expected_count}). Pozostaję przy wartości z DB.")
+                else:
+                    logger.warning(f"Tekst licznika ze strony galerii ('{count_txt}') nie jest liczbą.")
+            except NoSuchElementException:
+                logger.warning(f"Brak elementu licznika ('h1 > span.ms-1') na stronie galerii {gallery_id}.")
+            except Exception as e_count_page:
+                logger.warning(f"Błąd podczas pobierania licznika ze strony galerii {gallery_id}: {e_count_page}", exc_info=False)
+        
+        logger.info(f"Ostateczny expected_count dla galerii '{title_for_reporting}' (ID: {gallery_id}): {final_expected_count or 'Nadal nieznany'}")
+
+        # 7. Logika pobierania plików (pozostaje podobna)
+        current_files_on_disk = set(os.listdir(folder_path)) if os.path.exists(folder_path) else set()
+        final_dl_count_on_disk = len(current_files_on_disk)
+        new_files_downloaded_this_session = 0
+
+        # Użyj zaktualizowanego title_for_reporting
+        title_for_reporting = determined_title_from_ai or current_original_title
+
+        if final_expected_count is not None and final_dl_count_on_disk >= final_expected_count:
+            logger.info(f"Galeria '{title_for_reporting}' ({gallery_id}) już kompletna na dysku ({final_dl_count_on_disk}/{final_expected_count}). Pomijam pobieranie.")
+            imgs_elements_to_download = []
+        else:
+            reporting.update_current_status(
+                f"Przygotowanie do scrolla", model=model_name_original, gallery=title_for_reporting, 
+                gallery_id=gallery_id, is_processing=True, 
+                downloaded_count=final_dl_count_on_disk, 
+                expected_count=final_expected_count
+            )
+            imgs_elements_to_download = driver_utils.scroll_until_timeout(
+                driver, 'div.photo-item a[href]', 
+                expected_count=final_expected_count, 
+                allow_up_scroll=False, 
+                gallery_id=gallery_id, 
+                model_name=model_name_original, 
+                gallery_title=title_for_reporting, 
+                initial_downloaded_count=final_dl_count_on_disk,
+                current_expected_count_for_reporting=final_expected_count
+            )
+
+        if imgs_elements_to_download:
+            logger.info(f"Pobieram {len(imgs_elements_to_download)} linków dla '{title_for_reporting}'. Na dysku: {final_dl_count_on_disk}.")
+            reporting.update_current_status(
+                f"Pobieranie... ({final_dl_count_on_disk})", model=model_name_original, gallery=title_for_reporting,
+                gallery_id=gallery_id, is_processing=True, downloaded_count=final_dl_count_on_disk,
+                scan_session_found_count=len(imgs_elements_to_download), expected_count=final_expected_count
+            )
+            for el in imgs_elements_to_download:
+                if main.shutdown_requested: logger.info(f"Przerwano pobieranie dla {gallery_id}."); break
                 try: img_url = el.get_attribute('href')
-                except Exception as e: logger.warning(f"PSG: Błąd href: {e}", exc_info=False); continue
+                except Exception as e_href: logger.warning(f"Błąd pobierania href atrybutu: {e_href}", exc_info=False); continue
                 if not img_url: continue
                 img_filename = os.path.basename(utils.urlparse(img_url).path)
                 if not img_filename: continue
+                
                 if img_filename not in current_files_on_disk:
                     if services.download_image(img_url, os.path.join(folder_path, img_filename)):
-                        new_dl_session += 1; current_files_on_disk.add(img_filename); final_dl_count = len(current_files_on_disk)
-                        reporting.update_current_status(f"Pobrano {new_dl_session} ({final_dl_count})...", model=model_name_original, gallery=determined_title, gallery_id=gallery_id, is_processing=True, downloaded_count=final_dl_count, scan_session_found_count=len(imgs_elements), expected_count=expected_count)
-                time.sleep(0.01)
-        else: logger.info(f"PSG: Brak elementów do pobrania dla '{determined_title}' ({gallery_id}).")
+                        new_files_downloaded_this_session += 1
+                        current_files_on_disk.add(img_filename) # Dodaj do seta, aby uniknąć ponownego pobierania w tej sesji
+                        final_dl_count_on_disk = len(current_files_on_disk)
+                        reporting.update_current_status(
+                            f"Pobrano {new_files_downloaded_this_session} ({final_dl_count_on_disk})...", model=model_name_original,
+                            gallery=title_for_reporting, gallery_id=gallery_id, is_processing=True,
+                            downloaded_count=final_dl_count_on_disk, 
+                            scan_session_found_count=len(imgs_elements_to_download), 
+                            expected_count=final_expected_count
+                        )
+                time.sleep(0.01) # Mała pauza między sprawdzaniem/pobieraniem linków
+        else:
+            logger.info(f"Brak nowych elementów do pobrania dla '{title_for_reporting}' ({gallery_id}) lub galeria kompletna.")
 
-        final_dl_count = len(os.listdir(folder_path)) if os.path.exists(folder_path) else 0
-        logger.info(f"PSG: '{determined_title}': pobrano {new_dl_session} nowych. Łącznie: {final_dl_count}. Oczekiwano: {expected_count or '?'}.")
+        # Ponownie policz pliki na dysku po zakończeniu pobierania
+        final_dl_count_on_disk = len(os.listdir(folder_path)) if os.path.exists(folder_path) else 0
+        logger.info(f"Galeria '{title_for_reporting}': pobrano {new_files_downloaded_this_session} nowych plików w tej sesji. Łącznie na dysku: {final_dl_count_on_disk}. Oczekiwano: {final_expected_count or '?'}.")
 
+        # 8. Ustal status końcowy i zapisz do DB
+        new_status = "pending_check"
         tolerance = config_handler.current_config['downloading']['incomplete_gallery_completion_tolerance']['value']
-        status = "pending_check";
-        if expected_count is not None:
-            if final_dl_count >= expected_count: status = "completed"
-            elif (expected_count - final_dl_count) <= tolerance and final_dl_count > 0: status = "completed_with_tolerance"
-            else: status = "partially_downloaded"
-        elif final_dl_count > 0: status = "downloaded_unknown_total"
-        logger.debug(f"PSG: Status galerii '{determined_title}': {status}")
-
-        gallery_db_data = {
-            "gallery_id": gallery_id,
-            "model_id": model_id,
-            "url": gallery_url,
-            "original_title": title_from_scrape_or_queue,
-            "determined_title": determined_title,
-            "folder_path": folder_path,
-            "expected_count": expected_count,
-            "downloaded_count": final_dl_count,
-            "status": status,
-            "last_processed_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "error_message": None
-        }
-        data_manager.save_gallery_data(gallery_db_data)
-        # Nie ma już potrzeby zarządzać listą incomplete_galleries - jest generowana z DB
-
+        if final_expected_count is not None:
+            if final_dl_count_on_disk >= final_expected_count:
+                new_status = "completed"
+            elif (final_expected_count - final_dl_count_on_disk) <= tolerance and final_dl_count_on_disk > 0:
+                new_status = "completed_with_tolerance"
+            else:
+                new_status = "partially_downloaded"
+        elif final_dl_count_on_disk > 0: # Nieznana liczba oczekiwanych, ale coś pobrano
+            new_status = "downloaded_unknown_total"
+        
+        logger.debug(f"Ustawiam status galerii '{title_for_reporting}' na: {new_status}")
+        
+        db_manager.execute_query(
+            "UPDATE galleries SET downloaded_count = %s, status = %s, last_processed_timestamp = %s, error_message = NULL WHERE gallery_id = %s",
+            (final_dl_count_on_disk, new_status, time.strftime("%Y-%m-%d %H:%M:%S"), gallery_id),
+            commit=True
+        )
+        
+        # Pauza po galerii
         time.sleep(0.25)
-        pause = config_handler.current_config['pauses_and_rotation']['gallery_pause']['value']
-        reporting.update_current_status("Pauza po galerii", model=model_name_original, gallery=determined_title, gallery_id=gallery_id, is_processing=False, downloaded_count=final_dl_count, expected_count=expected_count)
-        time.sleep(pause * random.uniform(0.8, 1.2)); return True
+        gallery_pause_duration = config_handler.current_config['pauses_and_rotation']['gallery_pause']['value']
+        reporting.update_current_status(
+            "Pauza po galerii", model=model_name_original, gallery=title_for_reporting, 
+            gallery_id=gallery_id, is_processing=False, 
+            downloaded_count=final_dl_count_on_disk, expected_count=final_expected_count
+        )
+        time.sleep(gallery_pause_duration * random.uniform(0.8, 1.2))
+        return True
+
     except constants.RestartRequiredError:
-        reporting.update_current_status("Restart wymagany", model=model_name_original, gallery=original_title_for_display, gallery_id=gallery_id, is_processing=False)
+        reporting.update_current_status("Restart wymagany", model=model_name_original, gallery=title_for_reporting, gallery_id=gallery_id, is_processing=False)
         raise
-    except Exception as e:
-        logger.exception(f"PSG: Błąd krytyczny dla {gallery_id} ('{original_title_for_display}'): {e}")
-        gallery_db_data = {
-            "gallery_id": gallery_id,
-            "model_id": model_id,
-            "url": gallery_url,
-            "original_title": title_from_scrape_or_queue,
-            "determined_title": gallery_entry.get("determined_title", title_from_scrape_or_queue) if gallery_entry else title_from_scrape_or_queue,
-            "folder_path": gallery_entry.get("folder_path") if gallery_entry else "Błąd - ścieżka nieustalona",
-            "expected_count": gallery_entry.get("expected_count") if gallery_entry else None,
-            "downloaded_count": gallery_entry.get("downloaded_count", 0) if gallery_entry else 0,
-            "status": "error",
-            "last_processed_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "error_message": str(e)[:1000]
-        }
-        data_manager.save_gallery_data(gallery_db_data)
-        reporting.update_current_status("Błąd galerii", model=model_name_original, gallery=original_title_for_display, gallery_id=gallery_id, is_processing=False)
+    except Exception as e_main_gallery:
+        logger.exception(f"Krytyczny błąd podczas przetwarzania galerii {gallery_id} ('{title_for_reporting}'): {e_main_gallery}")
+        db_manager.execute_query(
+            "UPDATE galleries SET status = %s, error_message = %s, last_processed_timestamp = %s WHERE gallery_id = %s",
+            ("error", str(e_main_gallery)[:1000], time.strftime("%Y-%m-%d %H:%M:%S"), gallery_id),
+            commit=True
+        )
+        reporting.update_current_status("Błąd galerii", model=model_name_original, gallery=title_for_reporting, gallery_id=gallery_id, is_processing=False)
         return False
 
 
-def _update_model_profile_after_scan(model_name_original, scanned_gallery_infos, refresh_only=False):
-    """Aktualizuje profil modelki w bazie danych."""
-    model_id = db_manager.get_or_create_model(model_name_original)
-    if not model_id: return []
-
-    galleries_to_process = []
-    if not scanned_gallery_infos:
-        logger.info(f"UMS: Brak galerii do aktualizacji dla {model_name_original}.")
-        return []
-
-    logger.info(f"UMS: Aktualizacja dla {model_name_original} ({model_id}). Zeskanowano: {len(scanned_gallery_infos)}. Tryb refresh_only: {refresh_only}")
-
-    for scanned_info in scanned_gallery_infos:
-        gid = utils.get_gallery_id(scanned_info['url'])
-        if not gid: continue
-
-        existing_entry = db_manager.get_gallery(gid)
-        current_status = existing_entry.get("status") if existing_entry else None
-        scanned_count = scanned_info.get('count')
-        existing_count = existing_entry.get('expected_count') if existing_entry else None
-        scanned_title = scanned_info['title']
-        existing_title = (existing_entry.get("original_title") if existing_entry else None) or gid
-
-        needs_processing = False
-        needs_db_update = False
-
-        if not existing_entry:
-            logger.debug(f"UMS: Nowa galeria {gid} ('{scanned_title}', Licznik: {scanned_count}).")
-            needs_processing = True
-            needs_db_update = True
-        else:
-            title_changed = scanned_title and (scanned_title != existing_title or scanned_title != existing_entry.get("determined_title"))
-            count_changed = scanned_count is not None and scanned_count != existing_count
-            count_is_new_and_better = scanned_count is not None and (existing_count is None or scanned_count > existing_count)
-
-            if title_changed:
-                logger.info(f"UMS: Tytuł/Opis {gid} ('{existing_title}' -> '{scanned_title}').")
-                needs_db_update = True
-            if count_changed:
-                logger.info(f"UMS: Licznik {gid} ('{scanned_title}') zmieniony ({existing_count} -> {scanned_count}).")
-                needs_db_update = True
-                if count_is_new_and_better: needs_processing = True
-
-            if not needs_processing and current_status not in ["completed", "completed_with_tolerance"]:
-                logger.debug(f"UMS: Galeria {gid} wymaga przetw. (status: {current_status}).")
-                needs_processing = True; needs_db_update = True
-
-        if needs_db_update:
-            new_entry_data = existing_entry.copy() if existing_entry else {}
-            new_entry_data.update({
-                "gallery_id": gid,
-                "model_id": model_id,
-                "url": scanned_info['url'],
-                "original_title": scanned_title or existing_title,
-                "expected_count": scanned_count if scanned_count is not None else existing_count,
-                "determined_title": scanned_title or new_entry_data.get("determined_title", gid),
-            })
-            if needs_processing and new_entry_data.get("status") in ["completed", "completed_with_tolerance"]:
-                 new_entry_data["status"] = "pending_check"
-                 new_entry_data["last_processed_timestamp"] = None
-            elif "status" not in new_entry_data:
-                 new_entry_data["status"] = "pending_check"
-
-            db_manager.update_gallery(new_entry_data)
-            logger.debug(f"UMS: Zaktualizowano/Wstawiono galerię {gid} w DB.")
-
-        if needs_processing and not refresh_only:
-            galleries_to_process.append({'url': scanned_info['url'], 'title': scanned_title or existing_title, 'count': scanned_count if scanned_count is not None else existing_count})
-
-    logger.info(f"UMS: Aktualizacja profilu DB dla '{model_name_original}' zakończona.")
-    return galleries_to_process
-
+# Funkcja _update_model_profile_after_scan nie jest już potrzebna w tej formie,
+# ponieważ _scan_new_model_page bezpośrednio aktualizuje/wstawia galerie do DB.
 
 def handle_priority_item(item, driver_instance=None):
-    config_handler.load_config(); item_type = item.get("type"); payload = item.get("data")
+    # ... (logika pozostaje podobna, ale wywołanie process_single_gallery się zmienia)
+    config_handler.load_config()
+    item_type = item.get("type")
+    payload = item.get("data") # Payload jest teraz słownikiem lub stringiem (dla scan_model)
     item_display_info = str(payload.get("id", str(payload))) if isinstance(payload, dict) else str(payload)
-    if not item_type or payload is None: logger.warning(f"Nieprawidłowy element priorytetowy: {item}."); return
-    logger.info(f"Priorytet: Typ='{item_type}', Dane='{item_display_info}'"); driver = None; created_here = False
+    
+    if not item_type or payload is None: 
+        logger.warning(f"Nieprawidłowy element priorytetowy: {item}. Pomijam.")
+        return
+
+    logger.info(f"Przetwarzanie elementu priorytetowego: Typ='{item_type}', Dane='{item_display_info}'")
+    driver = None
+    created_driver_here = False
     rre_occurred = False
+
     try:
         if item_type == "scan_model" or item_type == "scan_model_refresh_only":
-            model_name = str(payload)
+            model_name_to_scan = str(payload) # payload to nazwa modelki
             is_refresh_only = item_type == "scan_model_refresh_only"
-            status_msg = "Priorytet: Odświeżanie" if is_refresh_only else "Priorytet: Skan modelu"
-            reporting.update_current_status(status_msg, model=model_name, is_processing=True)
-            driver = driver_instance if driver_instance and driver_utils.is_driver_responsive(driver_instance) else driver_utils.create_driver_with_retry(); created_here = not (driver_instance and driver_utils.is_driver_responsive(driver_instance))
-            scanned_infos = _scan_new_model_page(driver, model_name)
-            to_process_from_scan = _update_model_profile_after_scan(model_name, scanned_infos, refresh_only=is_refresh_only)
-
-            if to_process_from_scan:
-                to_add_q = [{'type': 'gallery', 'data': {'id': utils.get_gallery_id(g['url']), 'model_name': model_name, 'title': g.get('title'), 'count': g.get('count')}} for g in to_process_from_scan if utils.get_gallery_id(g['url'])]
-                if to_add_q: q = data_manager.load_priority_queue(); q = to_add_q + q; data_manager.save_priority_queue(q); logger.info(f"Dodano {len(to_add_q)} galerii z '{model_name}' do kolejki DB.")
+            status_msg = "Priorytet: Odświeżanie opisów modelu" if is_refresh_only else "Priorytet: Skanowanie modelu"
+            reporting.update_current_status(status_msg, model=model_name_to_scan, is_processing=True)
+            
+            if driver_instance and driver_utils.is_driver_responsive(driver_instance):
+                driver = driver_instance
+            else:
+                driver = driver_utils.create_driver_with_retry()
+                created_driver_here = True
+            
+            scanned_gallery_infos_from_page = _scan_new_model_page(driver, model_name_to_scan)
+            # _scan_new_model_page teraz samo zapisuje/aktualizuje galerie w DB.
+            # Jeśli nie jest to refresh_only, to nowo znalezione/zaktualizowane galerie (z pending_check)
+            # zostaną przetworzone w głównej pętli handle_process_models.
+            # Jeśli jest to refresh_only, to tylko zaktualizowano dane w DB (np. expected_count, original_title)
+            
+            if not is_refresh_only and scanned_gallery_infos_from_page:
+                # Dla skanowania (nie refresh_only), możemy chcieć od razu przetworzyć te galerie
+                # lub dodać je na początek kolejki priorytetowej.
+                # Na razie _scan_new_model_page aktualizuje DB, a główna pętla je przetworzy.
+                logger.info(f"Skanowanie modelu '{model_name_to_scan}' zakończone. Znaleziono/zaktualizowano {len(scanned_gallery_infos_from_page)} galerii w DB.")
             elif is_refresh_only:
-                 logger.info(f"Odświeżanie opisów dla '{model_name}' zakończone. Nie dodano galerii do kolejki.")
+                 logger.info(f"Odświeżanie danych dla modelu '{model_name_to_scan}' zakończone (dane w DB zaktualizowane).")
 
-            time.sleep(0.25); reporting.update_current_status(f"Zakończono skan/odświeżanie {model_name}", model=model_name, is_processing=False); return
+            reporting.update_current_status(f"Zakończono {status_msg} dla {model_name_to_scan}", model=model_name_to_scan, is_processing=False)
+
         elif item_type == "gallery":
-            if not isinstance(payload, dict): logger.error(f"Błąd 'gallery': Oczekiwano dict w 'data', jest: {type(payload)}. Element: {item}"); return
-            gid, model, title, count = payload.get("id"), payload.get("model_name"), payload.get("title"), payload.get("count")
-            if not gid or not model: logger.error(f"Brak ID/Modelu w 'gallery': {payload}."); return
-            reporting.update_current_status("Priorytet: Przetw. galerii", gallery_id=gid, model=model, gallery=title, is_processing=True)
-            driver = driver_instance if driver_instance and driver_utils.is_driver_responsive(driver_instance) else driver_utils.create_driver_with_retry(); created_here = not (driver_instance and driver_utils.is_driver_responsive(driver_instance))
-            services.initialize_ai_model()
-            profile_g = db_manager.get_gallery(gid)
-            url_g = profile_g.get('url') if profile_g else f"{constants.BASE_URL_SITE}/gallery/{gid}"
-            info_g = {'url': url_g, 'title': title or gid, 'count': count if count is not None else (profile_g.get('expected_count') if profile_g else None)}
-            process_single_gallery(driver, model, info_g)
-            time.sleep(0.25);
-            logger.info(f"Zakończono priorytet {gid} dla {model}."); reporting.update_current_status(f"Zakończono galerię {title}", model=model, gallery_id=gid, gallery=title, is_processing=False)
-    except constants.RestartRequiredError as rre:
-        rre_occurred = True; logger.warning(f"RRE w handle_priority_item: {rre}.")
-        if created_here and driver:
-            try: driver.quit(); logger.info("Zamknięto driver (HPI) po RRE.")
-            except Exception as e: logger.warning(f"Błąd quit HPI RRE: {e}")
-        raise
-    except Exception as e:
-        logger.exception(f"Błąd priorytetu {item_display_info}: {e}");
-        reporting.update_current_status(f"Błąd kryt. prio {item_type} - {item_display_info}", is_processing=False)
-    finally:
-        if driver and created_here and not rre_occurred:
-            logger.info(f"Zamykam driver HPI (finally, no RRE) dla {item_display_info}");
-            try: driver.quit()
-            except Exception as e: logger.warning(f"Błąd quit HPI finally: {e}")
+            if not isinstance(payload, dict): 
+                logger.error(f"Nieprawidłowy format 'data' dla typu 'gallery' w kolejce: oczekiwano dict, jest {type(payload)}. Payload: {payload}"); return
+            
+            gallery_id_to_process = payload.get("id")
+            model_name_for_gallery = payload.get("model_name")
+            gallery_title_from_queue = payload.get("title", gallery_id_to_process) # Fallback
+            
+            if not gallery_id_to_process or not model_name_for_gallery:
+                logger.error(f"Brak ID galerii lub nazwy modelki w danych priorytetowych dla galerii: {payload}. Pomijam."); return
 
-        exception_other_than_rre = 'e' in locals() and not isinstance(locals().get('e'), constants.RestartRequiredError)
-        if not main.shutdown_requested and not rre_occurred and not exception_other_than_rre:
-            state = data_manager.load_script_state()
-            if not state.get("current_operation", {}).get("name"):
+            gallery_db_entry = db_manager.get_gallery(gallery_id_to_process)
+            if not gallery_db_entry or not gallery_db_entry.get('url'):
+                logger.error(f"Nie znaleziono URL dla galerii {gallery_id_to_process} w bazie danych. Pomijam priorytet.")
+                # Można by spróbować skonstruować URL, ale lepiej polegać na danych z DB
+                return
+
+            gallery_url_to_process = gallery_db_entry['url']
+            title_for_reporting_prio = gallery_db_entry.get("determined_title") or gallery_db_entry.get("original_title") or gallery_title_from_queue
+
+            reporting.update_current_status(
+                "Priorytet: Przetwarzanie galerii", gallery_id=gallery_id_to_process, 
+                model=model_name_for_gallery, gallery=title_for_reporting_prio, is_processing=True
+            )
+            
+            if driver_instance and driver_utils.is_driver_responsive(driver_instance):
+                driver = driver_instance
+            else:
+                driver = driver_utils.create_driver_with_retry()
+                created_driver_here = True
+            
+            services.initialize_ai_model() # Upewnij się, że AI jest gotowe
+            
+            process_single_gallery(driver, model_name_for_gallery, gallery_url_to_process, gallery_id_to_process)
+            
+            logger.info(f"Zakończono przetwarzanie priorytetowe galerii {gallery_id_to_process} dla modelki {model_name_for_gallery}.")
+            reporting.update_current_status(
+                f"Zakończono priorytet: {title_for_reporting_prio}", model=model_name_for_gallery, 
+                gallery_id=gallery_id_to_process, gallery=title_for_reporting_prio, is_processing=False
+            )
+        else:
+            logger.warning(f"Nieznany typ elementu w kolejce priorytetowej: {item_type}")
+
+    except constants.RestartRequiredError as rre:
+        rre_occurred = True
+        logger.warning(f"RestartRequiredError w handle_priority_item ({item_display_info}): {rre}.")
+        if created_driver_here and driver:
+            try: driver.quit(); logger.info("Zamknięto driver (HPI) po RRE.")
+            except Exception as e_quit: logger.warning(f"Błąd quit drivera (HPI RRE): {e_quit}")
+        raise # Rzuć dalej, aby główna pętla obsłużyła restart
+    except Exception as e:
+        logger.exception(f"Krytyczny błąd podczas przetwarzania elementu priorytetowego {item_display_info}: {e}")
+        reporting.update_current_status(f"Błąd krytyczny prio: {item_type} - {item_display_info}", is_processing=False)
+    finally:
+        if driver and created_driver_here and not rre_occurred:
+            logger.info(f"Zamykam driver (HPI, finally, no RRE) dla {item_display_info}")
+            try: driver.quit()
+            except Exception as e_quit_fin: logger.warning(f"Błąd quit drivera (HPI finally): {e_quit_fin}")
+        
+        # Aktualizuj status tylko jeśli nie ma aktywnej operacji i nie było błędu RRE ani innego
+        is_exception_other_than_rre = 'e' in locals() and not isinstance(locals().get('e'), constants.RestartRequiredError)
+        if not main.shutdown_requested and not rre_occurred and not is_exception_other_than_rre:
+            current_operation_state = data_manager.load_script_state().get("current_operation", {})
+            if not current_operation_state.get("name"): # Jeśli żadna główna operacja nie jest aktywna
                  reporting.update_current_status("Oczekiwanie...", is_processing=False)
 
 
 def handle_process_models(start_model_index=0, check_mode="all_or_incomplete"):
-    models_list = data_manager.read_model_list()
-    if not models_list: logger.info("Brak modelek."); data_manager.clear_active_operation(); return
-    driver = None; g_processed_vpn = 0; last_err = None
-    config_handler.load_config(); cfg_pr = config_handler.current_config['pauses_and_rotation']
-    vpn_thresh = random.randint(cfg_pr['GALLERY_PAUSE_THRESHOLD_MIN']['value'], cfg_pr['GALLERY_PAUSE_THRESHOLD_MAX']['value'])
-    logger.info(f"Start HPM. Tryb: {check_mode}. Start: {start_model_index}. Próg VPN: {vpn_thresh}.")
-    err_stop = False
-    try:
-        driver = driver_utils.create_driver_with_retry(); services.initialize_ai_model()
-        for model_idx in range(start_model_index, len(models_list)):
-            if main.shutdown_requested or err_stop: logger.info("HPM: Stop/Shutdown."); break
-            if config_handler.load_config(): logger.info("HPM: Config przeładowany.")
+    # Uwaga: start_model_index jest teraz mniej użyteczny, bo iterujemy po modelach z DB.
+    # Zachowujemy go dla logiki wznawiania, ale pętla powinna być odporna.
+    
+    all_model_names_from_db = data_manager.read_model_list() # Odczytuje z DB
+    if not all_model_names_from_db: 
+        logger.info("Brak modelek w bazie danych do przetworzenia."); 
+        data_manager.clear_active_operation()
+        return
 
-            prio_batch_count = 0
+    models_to_process_in_run = all_model_names_from_db
+    if start_model_index > 0 and start_model_index < len(all_model_names_from_db):
+        logger.info(f"Wznawiam przetwarzanie modeli od indeksu: {start_model_index} ({all_model_names_from_db[start_model_index]})")
+        models_to_process_in_run = all_model_names_from_db[start_model_index:]
+    elif start_model_index >= len(all_model_names_from_db):
+        logger.info("Indeks startowy poza zakresem. Rozpoczynam od początku listy modeli z DB.")
+        # W tym przypadku, jeśli chcemy zacząć od początku, resetujemy stan
+        data_manager.update_last_model_index(-1) # Zresetuje `last_model_index_processed`
+
+    driver = None
+    galleries_processed_since_last_vpn_rotation = 0
+    last_processing_error = None
+    config_handler.load_config() 
+    vpn_rotation_config = config_handler.current_config['pauses_and_rotation']
+    vpn_rotation_threshold = random.randint(
+        vpn_rotation_config['GALLERY_PAUSE_THRESHOLD_MIN']['value'], 
+        vpn_rotation_config['GALLERY_PAUSE_THRESHOLD_MAX']['value']
+    )
+    logger.info(f"Rozpoczynam handle_process_models. Tryb: {check_mode}. Próg VPN: {vpn_rotation_threshold} galerii.")
+    operation_should_stop = False
+
+    try:
+        driver = driver_utils.create_driver_with_retry()
+        services.initialize_ai_model()
+
+        for model_idx_loop, model_name_original in enumerate(models_to_process_in_run):
+            current_global_model_index = all_model_names_from_db.index(model_name_original) # Znajdź globalny indeks
+            data_manager.update_last_model_index(current_global_model_index) # Zapisz globalny indeks
+
+            if main.shutdown_requested or operation_should_stop: 
+                logger.info("HPM: Otrzymano żądanie zatrzymania lub wystąpił błąd krytyczny."); break
+            
+            if config_handler.load_config(): logger.info("HPM: Konfiguracja przeładowana.")
+
+            # Przetwórz kolejkę priorytetową przed każdym modelem
+            priority_batch_processed_count = 0
             while True:
-                if main.shutdown_requested: err_stop=True; break
-                p_q = data_manager.load_priority_queue()
-                if not p_q: break
-                if prio_batch_count >= 5: logger.info(f"HPM: Przetworzono {prio_batch_count} prio. Kontynuuję model."); break
-                logger.info(f"HPM: {len(p_q)} prio. Przetwarzam...");
-                item_p = p_q.pop(0); data_manager.save_priority_queue(p_q)
-                try: handle_priority_item(item_p, driver_instance=driver)
-                except constants.RestartRequiredError as rre_p:
-                    logger.warning(f"RRE w prio {item_p}: {rre_p}.")
+                if main.shutdown_requested: operation_should_stop = True; break
+                priority_queue = data_manager.load_priority_queue()
+                if not priority_queue: break
+                if priority_batch_processed_count >= 5: # Ograniczenie, aby nie utknąć na kolejce
+                    logger.info(f"HPM: Przetworzono {priority_batch_processed_count} elementów priorytetowych. Kontynuuję z modelem głównym.")
+                    break
+                
+                logger.info(f"HPM: Znaleziono {len(priority_queue)} elementów w kolejce priorytetowej. Przetwarzam pierwszy...");
+                priority_item = priority_queue.pop(0)
+                data_manager.save_priority_queue(priority_queue) # Zapisz kolejkę po usunięciu elementu
+                
+                try:
+                    handle_priority_item(priority_item, driver_instance=driver)
+                except constants.RestartRequiredError as rre_priority:
+                    logger.warning(f"RestartRequiredError w zadaniu priorytetowym ({priority_item.get('type')}): {rre_priority}. Przekazuję dalej.")
                     if not driver_utils.is_driver_responsive(driver): driver = driver_utils.create_driver_with_retry()
-                    raise rre_p
-                except Exception as e_p:
-                    logger.exception(f"Błąd w prio {item_p}: {e_p}")
+                    raise rre_priority # Przerwij HPM i pozwól głównej pętli na restart
+                except Exception as e_priority:
+                    logger.exception(f"Nieobsłużony błąd w zadaniu priorytetowym ({priority_item.get('type')}): {e_priority}")
                     if not driver_utils.is_driver_responsive(driver):
-                        logger.warning("Driver niereponsywny po błędzie prio. Odtwarzam.")
-                        try: driver.quit()
+                        logger.warning("Driver niereponsywny po błędzie w zadaniu priorytetowym. Odtwarzam.")
+                        try: driver.quit() 
                         except: pass
                         driver = driver_utils.create_driver_with_retry()
-                prio_batch_count+=1
-            if err_stop: break
+                priority_batch_processed_count += 1
+            if operation_should_stop: break
 
-            model_name = models_list[model_idx]; model_sani = utils.sanitize_foldername(model_name)
-            model_id = db_manager.get_or_create_model(model_name)
-            reporting.update_current_status(f"Model ({check_mode})", model=model_name, is_processing=True)
-            logger.info(f"=== MODEL: {model_name} ({model_idx+1}/{len(models_list)}) ==="); os.makedirs(data_manager.get_model_data_dir(model_sani), exist_ok=True)
-            profile_d = data_manager.load_model_galleries_data(model_name) # Pobiera z DB
-            profile_ex = bool(profile_d) # Sprawdza, czy są galerie w DB
+            logger.info(f"=== PRZETWARZANIE MODELKI: {model_name_original} ({current_global_model_index + 1}/{len(all_model_names_from_db)}) ===")
+            reporting.update_current_status(f"Przetwarzanie modelu ({check_mode})", model=model_name_original, is_processing=True)
+            
+            model_id = db_manager.get_or_create_model(model_name_original) # Powinno już istnieć
+            if not model_id: 
+                logger.error(f"Nie udało się uzyskać ID dla modelki {model_name_original} z DB. Pomijam."); continue
 
-            g_to_process = []
-            scan_page = (check_mode == "only_new_or_count_changed") or (check_mode == "all_or_incomplete" and not profile_ex)
-            if scan_page:
-                logger.info(f"HPM: Skanuję {model_name}...");
+            os.makedirs(data_manager.get_model_data_dir(utils.sanitize_foldername(model_name_original)), exist_ok=True)
+
+            galleries_for_this_model = []
+            if check_mode == "only_new_or_count_changed" or \
+               (check_mode == "all_or_incomplete" and not db_manager.get_model_galleries(model_id)): # Jeśli nie ma żadnych galerii w DB dla tego modelu
+                logger.info(f"Skanowanie strony dla modelki {model_name_original} (tryb: {check_mode})...")
                 try:
-                    scanned_g = _scan_new_model_page(driver, model_name)
-                    g_to_process.extend(_update_model_profile_after_scan(model_name, scanned_g))
-                    if main.shutdown_requested: err_stop=True; break
+                    _scan_new_model_page(driver, model_name_original) # Ta funkcja już zapisuje/aktualizuje w DB
+                    if main.shutdown_requested: operation_should_stop = True; break
                 except constants.RestartRequiredError: raise
-                except Exception as e_s:
-                    logger.error(f"HPM: Błąd skanu {model_name}: {e_s}", exc_info=True); last_err=e_s;
-                    data_manager.update_last_model_index(model_idx);
-                    if main.shutdown_requested: err_stop=True; break
-                    continue
-            elif check_mode == "all_or_incomplete" and profile_ex:
-                 logger.info(f"HPM: Nieukończone z profilu {model_name}.");
-                 for gid, g_e in profile_d.items():
-                     if g_e.get("status") not in ["completed", "completed_with_tolerance"]:
-                         g_to_process.append({'url': g_e['url'], 'title': g_e.get('original_title',gid), 'count': g_e.get('expected_count')})
-                 if g_to_process: logger.info(f"Znaleziono {len(g_to_process)} nieukończonych.")
-            if err_stop: break
-            if not g_to_process: logger.info(f"HPM: Brak galerii do przetworzenia dla {model_name}.");
-            else: logger.info(f"HPM: Przetwarzam {len(g_to_process)} galerii dla {model_name}...")
+                except Exception as e_scan_page:
+                    logger.error(f"Błąd podczas skanowania strony modelki {model_name_original}: {e_scan_page}", exc_info=True)
+                    last_processing_error = e_scan_page
+                    if main.shutdown_requested: operation_should_stop = True; break
+                    continue # Przejdź do następnej modelki
+            
+            # Po skanowaniu (lub jeśli go nie było), pobierz galerie do przetworzenia z DB
+            galleries_to_process_db = db_manager.get_model_galleries_for_processing(model_id, check_mode)
+            logger.info(f"Znaleziono {len(galleries_to_process_db)} galerii do przetworzenia dla {model_name_original} w trybie '{check_mode}'.")
 
-            for g_info in g_to_process:
-                if main.shutdown_requested: err_stop=True; break
-                if data_manager.load_priority_queue():
-                    logger.info("HPM: Wykryto prio. Przerywam model.")
-                    data_manager.update_last_model_index(model_idx); return
-                try: process_single_gallery(driver, model_name, g_info)
-                except constants.RestartRequiredError as rre_g: logger.warning(f"RRE w galerii {g_info.get('title')}: {rre_g}."); raise
-                except Exception as e_g: logger.exception(f"Błąd w galerii {g_info.get('title')}: {e_g}"); last_err=e_g
-                if main.shutdown_requested: err_stop=True; break
-                g_processed_vpn+=1; time.sleep(0.25)
-                if g_processed_vpn >= vpn_thresh:
-                    logger.info(f"Próg VPN ({g_processed_vpn}). Restart.")
-                    data_manager.update_last_model_index(model_idx); raise constants.RestartRequiredError("Próg VPN")
-            if err_stop: break
+            for gallery_db_data in galleries_to_process_db:
+                if main.shutdown_requested: operation_should_stop = True; break
+                if data_manager.load_priority_queue(): # Sprawdź ponownie kolejkę przed każdą galerią
+                    logger.info("HPM: Wykryto nowe elementy w kolejce priorytetowej. Przerywam przetwarzanie modelu.")
+                    # Nie ustawiamy operation_should_stop = True, bo to nie błąd, tylko przerwanie dla priorytetu
+                    data_manager.update_last_model_index(current_global_model_index) # Zapisz obecny postęp
+                    return # Wróć do głównej pętli, aby obsłużyć priorytety
 
-            data_manager.update_last_model_index(model_idx);
-            reporting.update_current_status(f"Zakończono model {model_name}", model=model_name, is_processing=False);
-            time.sleep(0.25); logger.info(f"--- Zakończono model {model_name} ---")
+                try:
+                    gallery_title_rep = gallery_db_data.get('determined_title') or gallery_db_data.get('original_title') or gallery_db_data.get('gallery_id')
+                    logger.info(f"  Przetwarzanie galerii: {gallery_title_rep} (ID: {gallery_db_data['gallery_id']})")
+                    
+                    process_single_gallery(driver, model_name_original, gallery_db_data['url'], gallery_db_data['gallery_id'])
+                    
+                    galleries_processed_since_last_vpn_rotation += 1
+                    if galleries_processed_since_last_vpn_rotation >= vpn_rotation_threshold:
+                        logger.info(f"Osiągnięto próg VPN ({galleries_processed_since_last_vpn_rotation} galerii). Wymagany restart.")
+                        data_manager.update_last_model_index(current_global_model_index)
+                        raise constants.RestartRequiredError("Osiągnięto próg rotacji VPN")
+                except constants.RestartRequiredError: raise # Przekaż dalej
+                except Exception as e_gallery_proc:
+                    logger.exception(f"Błąd podczas przetwarzania galerii ID {gallery_db_data['gallery_id']} dla modelki {model_name_original}: {e_gallery_proc}")
+                    last_processing_error = e_gallery_proc
+                
+                if main.shutdown_requested: operation_should_stop = True; break
+                time.sleep(0.25) # Mała pauza między galeriami
+            
+            if operation_should_stop: break
+            
+            logger.info(f"--- Zakończono przetwarzanie modelu: {model_name_original} ---")
+            reporting.update_current_status(f"Zakończono model {model_name_original}", model=model_name_original, is_processing=False)
+            time.sleep(0.5) # Pauza między modelami
 
-        if not main.shutdown_requested and not err_stop:
-            logger.info(f"🎉 HPM: ZAKOŃCZONO ({check_mode}) 🎉");
-            data_manager.update_last_model_index(-1); data_manager.clear_active_operation()
-    except constants.RestartRequiredError as rre_o: last_err=rre_o; logger.warning(f"RRE w HPM: {rre_o}."); raise
-    except Exception as e_o: last_err=e_o; logger.exception(f"Błąd krytyczny HPM: {e_o}"); data_manager.clear_active_operation()
+        if not main.shutdown_requested and not operation_should_stop:
+            logger.info(f"🎉 ZAKOŃCZONO WSZYSTKIE MODELKI ({check_mode}) 🎉")
+            data_manager.update_last_model_index(-1) # Zresetuj indeks na koniec
+            data_manager.clear_active_operation()
+            
+    except constants.RestartRequiredError as rre_hpm:
+        last_processing_error = rre_hpm
+        logger.warning(f"RestartRequiredError w handle_process_models: {rre_hpm}.")
+        raise # Przekaż dalej do głównej pętli
+    except Exception as e_hpm_main:
+        last_processing_error = e_hpm_main
+        logger.exception(f"Krytyczny błąd w handle_process_models: {e_hpm_main}")
+        data_manager.clear_active_operation() # Wyczyść operację w razie błędu krytycznego
     finally:
         if driver:
-            logger.info("Zamykam driver (finally HPM)...")
+            logger.info("Zamykanie drivera (finally handle_process_models)...")
             try: driver.quit()
-            except Exception as e_q: logger.warning(f"Błąd zamykania drivera w HPM: {e_q}")
+            except Exception as e_quit_hpm: logger.warning(f"Błąd podczas zamykania drivera w HPM: {e_quit_hpm}")
 
-        is_rre_f = isinstance(last_err, constants.RestartRequiredError)
-        if not main.shutdown_requested and not is_rre_f:
-            op_s = data_manager.load_script_state().get("current_operation",{});
-            msg_f = "Zakończono/Przerwano modele."
-            if not op_s.get("name"): msg_f = "Zakończono modele. Oczekiwanie."
-            reporting.update_current_status(msg_f, is_processing=False)
+        is_rre_final = isinstance(last_processing_error, constants.RestartRequiredError)
+        if not main.shutdown_requested and not is_rre_final: # Jeśli nie było RRE i nie ma żądania zamknięcia
+            current_operation_state = data_manager.load_script_state().get("current_operation",{})
+            final_message = "Zakończono/Przerwano przetwarzanie modeli."
+            if not current_operation_state.get("name"): # Jeśli operacja została wyczyszczona (np. po pomyślnym zakończeniu)
+                final_message = "Przetwarzanie modeli zakończone. Oczekiwanie..."
+            reporting.update_current_status(final_message, is_processing=False)
+
 
 def handle_fill_incomplete():
-    reporting.update_current_status("Uzupełnianie niekompletnych (DB)", is_processing=True)
-    entries = data_manager.load_incomplete_galleries() # Ta funkcja teraz pobiera z DB
-    if not entries: logger.info("HFI: Brak niekompletnych."); reporting.update_current_status("Brak niekompletnych.", is_processing=False); data_manager.clear_active_operation(); return
-    logger.info(f"HFI: Uzupełniam {len(entries)} galerii...");
-    driver = None; processed_any = False; err_stop_fill = False; last_err_hfi = None
+    # Ta funkcja może teraz pobierać "niekompletne" galerie na podstawie statusu w DB
+    # i dodawać je do kolejki priorytetowej lub bezpośrednio przetwarzać.
+    # Dla uproszczenia, dodajmy je do kolejki.
+    reporting.update_current_status("Uzupełnianie niekompletnych galerii...", is_processing=True)
+    data_manager.clear_active_operation() # Usuń stary stan operacji, bo to jest nowa, jednorazowa
+    
     try:
-        driver = driver_utils.create_driver_with_retry(); services.initialize_ai_model()
-        for idx, entry in enumerate(entries):
-            if main.shutdown_requested: logger.info("HFI: Przerwano."); err_stop_fill=True; break
-            if config_handler.load_config(): logger.info("HFI: Config przeładowany.")
-            if data_manager.load_priority_queue(): logger.info("HFI: Wykryto priorytety. Przerywam."); return
-            title_d = entry.get('gallery_title', entry.get('url','N/A')); logger.info(f"HFI [{idx+1}/{len(entries)}]: '{title_d}' ({entry.get('model_name','N/A')})")
-            s_mock = {'url': entry['url'], 'title': entry.get('gallery_title'), 'count': entry.get('expected')}
-            try:
-                if process_single_gallery(driver, entry['model_name'], s_mock): processed_any=True
-            except constants.RestartRequiredError as rre_f: logger.warning(f"RRE w HFI dla '{title_d}': {rre_f}."); raise
-            except Exception as e_f: logger.exception(f"Błąd HFI dla '{title_d}': {e_f}"); last_err_hfi=e_f
-            if main.shutdown_requested: err_stop_fill=True; break
-            time.sleep(0.25)
-        if not main.shutdown_requested and not err_stop_fill:
-            logger.info("✅ HFI: Zakończono pętlę."); data_manager.clear_active_operation()
-            msg_e = "Zakończono uzupełnianie." if processed_any else "Uzupełnianie zakończone (bez postępu/błędów)."
-            if not entries: msg_e = "Brak galerii do uzupełnienia."
-            reporting.update_current_status(msg_e, is_processing=False)
-    except constants.RestartRequiredError as rre_h: last_err_hfi=rre_h; logger.warning(f"RRE w HFI: {rre_h}."); raise
-    except Exception as e_h: last_err_hfi=e_h; logger.exception(f"Błąd krytyczny HFI: {e_h}"); data_manager.clear_active_operation()
+        incomplete_galleries_from_db = db_manager.get_incomplete_galleries_db_for_queue() # Nowa funkcja w db_manager
+        
+        if not incomplete_galleries_from_db:
+            logger.info("HFI: Brak niekompletnych galerii w bazie danych do dodania do kolejki.")
+            reporting.update_current_status("Brak niekompletnych galerii.", is_processing=False)
+            return
+
+        logger.info(f"HFI: Znaleziono {len(incomplete_galleries_from_db)} niekompletnych galerii. Dodaję do kolejki priorytetowej...")
+        added_to_queue = 0
+        for gal_info in incomplete_galleries_from_db:
+            # gal_info to słownik: {'gallery_id', 'model_name', 'original_title', 'expected_count', 'url'}
+            item_data_for_queue = {
+                'id': gal_info['gallery_id'],
+                'model_name': gal_info['model_name'],
+                'title': gal_info.get('original_title') or gal_info['gallery_id'], # Użyj tytułu lub ID
+                'count': gal_info.get('expected_count') # Może być None
+            }
+            # Dodajemy na początek kolejki, aby zostały szybko przetworzone
+            if data_manager.add_to_priority_queue('gallery', item_data_for_queue, prepend=True):
+                added_to_queue += 1
+        
+        logger.info(f"HFI: Dodano {added_to_queue} z {len(incomplete_galleries_from_db)} niekompletnych galerii do kolejki priorytetowej.")
+        reporting.update_current_status(f"Dodano {added_to_queue} galerii do uzupełnienia do kolejki.", is_processing=False)
+
+    except Exception as e_hfi:
+        logger.exception(f"Krytyczny błąd w handle_fill_incomplete: {e_hfi}")
+        reporting.update_current_status(f"Błąd podczas uzupełniania niekompletnych: {str(e_hfi)[:100]}", is_processing=False)
     finally:
-        if driver:
-            logger.info("Zamykam driver (finally HFI)...")
-            try: driver.quit()
-            except Exception as e_qf: logger.warning(f"Błąd zamykania drivera w HFI: {e_qf}")
-        is_rre_fin_hfi = isinstance(last_err_hfi, constants.RestartRequiredError)
-        if not main.shutdown_requested and not is_rre_fin_hfi:
-            op_st_f = data_manager.load_script_state().get("current_operation",{})
-            fin_m = "Zakończono/Przerwano uzupełnianie."
-            if not op_st_f.get("name"):
-                fin_m = "Zakończono uzupełnianie." if processed_any and not err_stop_fill else "Uzupełnianie zakończone (bez postępu/błędów)."
-            if not err_stop_fill or not op_st_f.get("name"): reporting.update_current_status(fin_m, is_processing=False)
+        # Po zakończeniu (lub błędzie) tej operacji, status powinien być neutralny
+        current_operation_state = data_manager.load_script_state().get("current_operation", {})
+        if not current_operation_state.get("name"): # Jeśli żadna główna operacja nie jest aktywna
+             reporting.update_current_status("Oczekiwanie...", is_processing=False)
