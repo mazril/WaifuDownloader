@@ -24,7 +24,7 @@ BACKUP_BASE_PATH = os.path.join(SCRIPT_DIR, BACKUP_DIR_NAME)
 
 # ŚCIEŻKA DO MYSQLDUMP - dostosuj, jeśli nie jest w PATH!
 # Przykład dla XAMPP: MYSQLDUMP_PATH = r"C:\xampp\mysql\bin\mysqldump.exe"
-MYSQLDUMP_PATH = "mysqldump" # Zakłada, że mysqldump jest w PATH
+MYSQLDUMP_PATH = "C:\xampp\mysql\bin\mysqldump.exe" # Zakłada, że mysqldump jest w PATH
 
 # Pliki do dołączenia do archiwum (rozszerzenia)
 FILES_TO_BACKUP_EXTENSIONS = ['.py', '.php', '.json', '.crx', '.txt']
