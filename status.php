@@ -1,7 +1,7 @@
 <?php
 // status.php
-require_once 'php_config.php'; // Zawiera php_db_config.php
-require_once 'php_utils.php';  // Zawiera funkcje pomocnicze
+require_once 'php_config.php'; 
+require_once 'php_utils.php';  
 
 $aggregate_last_modified_timestamp = "Ładowanie..."; 
 
@@ -47,6 +47,19 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
         #add-model-section { margin-bottom: 15px; padding: 10px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
         #add-model-section input[type="text"] { padding: 6px; border: 1px solid #ced4da; border-radius: 3px; flex-grow: 1; }
         #add-model-status { font-size: 0.9em; color: #495057; }
+        
+        /* Styl dla modala przeglądarki obrazków */
+        .image-viewer-modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); padding-top: 50px; }
+        .image-viewer-modal-content { background-color: #fefefe; margin: auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 1000px; border-radius: 5px; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); position: relative; }
+        .image-viewer-close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1; position: absolute; top: 10px; right: 20px; }
+        .image-viewer-close-button:hover, .image-viewer-close-button:focus { color: black; text-decoration: none; }
+        #image-viewer-title { margin-top: 0; margin-bottom: 15px; font-size: 1.3em; }
+        .image-grid { display: flex; flex-wrap: wrap; gap: 10px; max-height: 70vh; overflow-y: auto; justify-content: center; padding: 5px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 4px;}
+        .image-grid img { width: 100px; height: 100px; object-fit: cover; border: 1px solid #ddd; border-radius: 3px; cursor: pointer; transition: transform 0.2s; }
+        .image-grid img:hover { transform: scale(1.05); }
+        #image-viewer-status { margin-top: 15px; font-size: 0.9em; color: #555; text-align: center; }
+
+
         .modal { display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
         .modal-content { background-color: #fefefe; margin: 10% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 700px; border-radius: 5px; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19); }
         .close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1; }
@@ -106,11 +119,27 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
     </div>
 </div>
 
+<div id="image-viewer-modal" class="image-viewer-modal">
+    <div class="image-viewer-modal-content">
+        <span class="image-viewer-close-button" onclick="closeImageViewerModal()">&times;</span>
+        <h3 id="image-viewer-title">Nazwa Galerii</h3>
+        <div id="image-viewer-status">Ładowanie plików...</div>
+        <div id="image-viewer-files" class="image-grid">
+            </div>
+    </div>
+</div>
+
+
 <script>
     const API_URL = '<?php echo API_URL; ?>';
     const toastDiv = document.getElementById('toast');
     const modelTreeUl = document.getElementById('model-tree');
-    const statusDiv = document.getElementById('current-status'); // ZDEFINIOWANO GLOBALNIE
+    const statusDiv = document.getElementById('current-status'); 
+    const imageViewerModal = document.getElementById('image-viewer-modal');
+    const imageViewerTitle = document.getElementById('image-viewer-title');
+    const imageViewerFilesDiv = document.getElementById('image-viewer-files');
+    const imageViewerStatusDiv = document.getElementById('image-viewer-status');
+    let currentlyViewedGalleryId = null; // ID galerii aktualnie otwartej w modalu
 
     let activeGalleryIdForUI = null;
     let activeModelNameSanitizedForUI = null;
@@ -195,7 +224,7 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
     function updateGalleryUI(galleryId, downloaded, expected, scanSessionFound, titleFromServer = null, urlFromServer = null, folderFromServer = null) {
         const galleryLi = document.getElementById('gallery_li_' + galleryId);
         if (!galleryLi) { 
-            console.warn("updateGalleryUI: Nie znaleziono LI dla galerii", galleryId); // Zmieniono na warn
+            console.warn("updateGalleryUI: Nie znaleziono LI dla galerii", galleryId); 
             return; 
         }
 
@@ -264,8 +293,7 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
     }
 
     function updateStatus() {
-        // statusDiv jest teraz globalny
-        if (!statusDiv) { // Dodatkowe zabezpieczenie
+        if (!statusDiv) { 
             console.error("updateStatus: statusDiv nie jest zdefiniowany!");
             return;
         }
@@ -325,12 +353,17 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
                              }
                          }
                     } else {
-                        // Jeśli element galerii nie istnieje, a powinien być przetwarzany,
-                        // może to oznaczać, że fetchAggregateDataAndUpdateModels jeszcze go nie stworzył.
-                        // Poczekajmy na następne wywołanie fetchAggregateDataAndUpdateModels.
                         console.warn(`updateStatus: Próba aktualizacji nieistniejącej galerii ${activeGalleryIdForUI} jako przetwarzanej.`);
                     }
                     updateGalleryUI(activeGalleryIdForUI, data.current_download_count, data.current_expected_count, data.scan_session_found_count);
+                    
+                    // Jeśli modal przeglądarki obrazków jest otwarty dla tej galerii, odśwież go
+                    if (imageViewerModal.style.display === 'block' && currentlyViewedGalleryId === activeGalleryIdForUI) {
+                        // Można dodać mały delay, aby dać czas plikom na pojawienie się
+                        setTimeout(() => {
+                            fetchGalleryFilesForModal(currentlyViewedGalleryId, imageViewerTitle.textContent.replace("Pliki dla: ",""));
+                        }, 1000); 
+                    }
                 
                 } else if (!data.is_processing && galleryThatWasProcessing) { 
                     console.log(`Galeria ${galleryThatWasProcessing} zakończyła przetwarzanie. Finalna aktualizacja UI.`);
@@ -347,8 +380,8 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
                 }
             })
             .catch(error => { 
-                console.error("Błąd odświeżania statusu (catch):", error); // Dodano (catch)
-                if (statusDiv) { // Sprawdź czy statusDiv istnieje przed użyciem
+                console.error("Błąd odświeżania statusu (catch):", error); 
+                if (statusDiv) { 
                     statusDiv.textContent = 'Błąd odświeżania statusu: ' + error.message; 
                     statusDiv.style.backgroundColor = '#ffcdd2'; 
                 }
@@ -370,7 +403,7 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
             .then(response => {
                 if (!response.ok) {
                     console.error(`Błąd HTTP w get_aggregate: ${response.status} ${response.statusText}`);
-                    return response.text().then(text => { // Spróbuj odczytać tekst błędu
+                    return response.text().then(text => { 
                         throw new Error(`HTTP error! status: ${response.status} ${response.statusText}, body: ${text.substring(0,500)}`);
                     });
                 }
@@ -378,8 +411,7 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
             })
             .then(aggregateData => {
                 console.log("Odpowiedź z get_aggregate (surowa):", aggregateData); 
-                // console.log("Odpowiedź z get_aggregate (JSON string):", JSON.stringify(aggregateData, null, 2)); 
-                if (aggregateData && aggregateData.models && typeof aggregateData.models === 'object') { // Dodano typeof check
+                if (aggregateData && aggregateData.models && typeof aggregateData.models === 'object') { 
                     console.log("Otrzymano dane agregatu. Liczba modeli:", Object.keys(aggregateData.models).length); 
                     const modelsData = aggregateData.models;
                     const modelNamesSorted = Object.keys(modelsData).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
@@ -401,7 +433,7 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
 
                     modelNamesSorted.forEach(modelNameOriginal => {
                         const modelData = modelsData[modelNameOriginal];
-                        if (typeof modelData !== 'object' || modelData === null) { // Dodatkowe sprawdzenie
+                        if (typeof modelData !== 'object' || modelData === null) { 
                             console.warn(`Nieprawidłowe dane dla modelu ${modelNameOriginal}, pomijam.`);
                             return; 
                         }
@@ -438,9 +470,9 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
                             modelHeader.querySelector('.toggle').addEventListener('click', function() {
                                 nestedUl.classList.toggle('active');
                                 this.textContent = nestedUl.classList.contains('active') ? '−' : '+';
-                                if (nestedUl.classList.contains('active') && !nestedUl.dataset.galleriesLoadedOnce) { // Załaduj galerie tylko jeśli nie były ładowane
+                                if (nestedUl.classList.contains('active') && !nestedUl.dataset.galleriesLoadedOnce) { 
                                     console.log(`Rozwinięto model ${modelNameOriginal}. Ładuję galerie (pierwszy raz)...`); 
-                                    fetchAggregateDataAndUpdateModels(false); // false, bo tylko ten model
+                                    fetchAggregateDataAndUpdateModels(false); 
                                 } else if (nestedUl.classList.contains('active')) {
                                      console.log(`Model ${modelNameOriginal} już był rozwinięty i galerie załadowane.`);
                                 }
@@ -457,7 +489,7 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
 
                         modelLiElement.querySelector('.model-name').textContent = `${modelNameOriginal} (${completedInModel}/${totalInModel})`;
                         const modelProgressBarDiv = modelLiElement.querySelector('.progress-bar');
-                        if (modelProgressBarDiv) { // Dodano sprawdzenie
+                        if (modelProgressBarDiv) { 
                             modelProgressBarDiv.style.width = `${modelProgressPercent.toFixed(1)}%`;
                             modelProgressBarDiv.textContent = `${modelProgressPercent.toFixed(0)}%`;
                         }
@@ -495,11 +527,14 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
                                      return;
                                 }
                                 let galleryLi = document.getElementById('gallery_li_' + galleryId);
+                                const escapedGalleryIdForJS = galleryId.replace(/'/g, "\\'");
+                                const escapedGalleryTitleForJS = (gData.title || galleryId).replace(/'/g, "\\'");
+                                // const escapedModelSanitizedNameForJS = sanitizedModelName.replace(/'/g, "\\'"); // Już jest sanitizowane
+
                                 if (!galleryLi) {
                                     galleryLi = document.createElement('li');
                                     galleryLi.className = 'gallery-li';
                                     galleryLi.id = 'gallery_li_' + galleryId;
-                                    const escapedGalleryId = galleryId.replace(/'/g, "\\'");
                                     galleryLi.innerHTML = `
                                         <span class="gallery-link">
                                             <span class="spinner"></span>
@@ -511,11 +546,17 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
                                                 <div class="progress-bar"></div>
                                             </div>
                                             <span class="gallery-status"></span>
-                                            <button class="btn-action" onclick="prioritizeItem('gallery', '${escapedGalleryId}')" title="Uzupełnij tę galerię priorytetowo">Uzupełnij</button>
+                                            <button class="btn-action" onclick="showGalleryFiles('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')" title="Pokaż pliki galerii">Galeria</button>
+                                            <button class="btn-action" onclick="prioritizeItem('gallery', '${escapedGalleryIdForJS}')" title="Uzupełnij tę galerię priorytetowo">Uzupełnij</button>
                                             <a href="${gData.url || '#'}" target="_blank" class="btn-action" title="Otwórz stronę źródłową galerii">Źródło</a>
                                         </div>
                                     `;
                                     nestedUl.appendChild(galleryLi);
+                                } else { // Aktualizuj istniejący przycisk "Galeria", jeśli tytuł się zmienił
+                                    const galleryButton = galleryLi.querySelector('button[onclick^="showGalleryFiles"]');
+                                    if(galleryButton) {
+                                        galleryButton.setAttribute('onclick', `showGalleryFiles('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')`);
+                                    }
                                 }
                                 updateGalleryUI(galleryId, gData.downloaded, gData.expected, null, gData.title, gData.url, gData.folder);
                                 if (galleryId === activeGalleryIdForUI && statusDiv && statusDiv.style.backgroundColor.includes('e0f7fa')) { 
@@ -547,15 +588,85 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
             })
             .catch(error => {
                  console.error("Błąd odświeżania agregatu modeli (catch):", error); 
-                 // Nie czyść modelTreeUl tutaj, jeśli już coś wyświetla, chyba że to forceFullRender
                  if(forceFullRender) modelTreeUl.innerHTML = '<li>Wystąpił błąd podczas ładowania danych modeli. Sprawdź konsolę. (catch)</li>';
-                 // Jeśli statusDiv jest dostępny, można tu też wyświetlić błąd
-                 if (statusDiv) { // Sprawdź, czy statusDiv jest zdefiniowany
+                 if (statusDiv) { 
                     statusDiv.textContent = 'Błąd ładowania danych modeli: ' + error.message;
                     statusDiv.style.backgroundColor = '#ffcdd2';
                  }
             });
     }
+
+    // --- Funkcje dla modala przeglądarki obrazków ---
+    function openImageViewerModal(galleryId, galleryTitle) {
+        currentlyViewedGalleryId = galleryId;
+        imageViewerTitle.textContent = "Pliki dla: " + galleryTitle;
+        imageViewerFilesDiv.innerHTML = ''; // Wyczyść poprzednie pliki
+        imageViewerStatusDiv.textContent = 'Ładowanie plików...';
+        imageViewerModal.style.display = 'block';
+        fetchGalleryFilesForModal(galleryId, galleryTitle);
+    }
+
+    function closeImageViewerModal() {
+        imageViewerModal.style.display = 'none';
+        imageViewerFilesDiv.innerHTML = '';
+        currentlyViewedGalleryId = null;
+    }
+
+    function fetchGalleryFilesForModal(galleryId, galleryTitle) { // galleryTitle dodane dla spójności
+        console.log(`Pobieranie plików dla galerii ${galleryId} (${galleryTitle}) do modala.`);
+        imageViewerStatusDiv.textContent = 'Pobieranie listy plików...';
+        fetch(`${API_URL}?action=get_gallery_files&gallery_id=${encodeURIComponent(galleryId)}&_=${new Date().getTime()}`)
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        throw new Error(`Błąd HTTP ${response.status} ${response.statusText}: ${text.substring(0,200)}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log("Odpowiedź z get_gallery_files:", data);
+                if (data.success) {
+                    imageViewerFilesDiv.innerHTML = ''; // Wyczyść ponownie na wypadek wielokrotnego wywołania
+                    if (data.files && data.files.length > 0) {
+                        imageViewerStatusDiv.textContent = `Znaleziono ${data.files.length} plików.`;
+                        // Zakładamy, że `Modelki` jest w tym samym katalogu co `status.php` na serwerze WWW
+                        // Jeśli jest inaczej, trzeba dostosować tę ścieżkę.
+                        const baseWebPathToModelki = "Modelki"; // Dostosuj, jeśli Modelki są gdzie indziej
+                        
+                        data.files.forEach(filename => {
+                            const img = document.createElement('img');
+                            // web_path_segment to np. ModelNameSanitized/GalleryFolderName
+                            // Pełna ścieżka do pliku będzie: Modelki/ModelNameSanitized/GalleryFolderName/filename.jpg
+                            // Jeśli folder Modelki nie jest w katalogu głównym projektu, trzeba dostosować
+                            img.src = `${data.web_path_segment}/${filename}`; 
+                            img.alt = filename;
+                            img.title = filename;
+                            img.onerror = function() { this.alt='Błąd ładowania'; this.style.border='1px solid red'; console.error("Błąd ładowania obrazka:", this.src);};
+                            // Proste otwieranie w nowej karcie po kliknięciu
+                            img.onclick = () => window.open(img.src, '_blank');
+                            imageViewerFilesDiv.appendChild(img);
+                        });
+                    } else {
+                        imageViewerStatusDiv.textContent = 'Brak plików w tej galerii lub folder nie istnieje.';
+                    }
+                } else {
+                    imageViewerStatusDiv.textContent = `Błąd: ${data.message || 'Nie udało się pobrać listy plików.'}`;
+                    showToast(`Błąd pobierania plików galerii: ${data.message || 'Nieznany błąd.'}`, true);
+                }
+            })
+            .catch(error => {
+                console.error('Błąd fetchGalleryFilesForModal:', error);
+                imageViewerStatusDiv.textContent = `Błąd sieciowy: ${error.message}`;
+                showToast(`Błąd sieciowy przy pobieraniu plików galerii: ${error.message}`, true);
+            });
+    }
+    
+    // Funkcja wywoływana przez przycisk "Galeria"
+    function showGalleryFiles(galleryId, galleryTitle) {
+        openImageViewerModal(galleryId, galleryTitle);
+    }
+    // --- Koniec funkcji dla modala ---
 
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -568,6 +679,7 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
         setInterval(fetchAndDisplayQueue, 30000); 
     });
 
+    // --- Zarządzanie Kolejką (bez zmian) ---
     let draggedItem = null;
     let queueDataCache = []; 
 
@@ -731,6 +843,10 @@ $aggregate_last_modified_timestamp = "Ładowanie...";
         const modal = document.getElementById('queue-modal');
         if (event.target == modal) {
             closeQueueModal();
+        }
+        // Zamknij modal przeglądarki obrazków, jeśli kliknięto poza nim
+        if (event.target == imageViewerModal) {
+            closeImageViewerModal();
         }
     };
 </script>
