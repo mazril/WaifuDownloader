@@ -79,3 +79,29 @@ Traceback (most recent call last):
     os.unlink(fullname)
 PermissionError: [WinError 5] Odmowa dostępu: 'D:\\Projekt\\Downloadery\\WaifuDownloaderGemini\\.git\\objects\\02\\01e592cb79e3d2253b2e5ea7bc5294ea4542e2'
 2025-05-28 17:19:32,554 [ERROR   ] [__main__            : 401] !!! Błąd podczas przywracania plików programu. Sprawdź logi. Rozważ ręczne przywrócenie. !!!
+2025-05-28 17:24:23,884 [INFO    ] [__main__            : 456] >>> Rozpoczynanie procesu tworzenia nowego backupu <<<
+2025-05-28 17:24:23,886 [INFO    ] [__main__            :  68] Rozpoczynam backup plików programu do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_172423.zip
+2025-05-28 17:24:24,170 [INFO    ] [__main__            : 106] Backup plików programu zakończony pomyślnie: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_172423.zip
+2025-05-28 17:24:24,170 [INFO    ] [config_handler      :  78] Wykryto zmianę w config.json lub wymuszono przeładowanie. Przeładowuję... (force=True, changed=False)
+2025-05-28 17:24:24,272 [INFO    ] [config_handler      : 105] Konfiguracja załadowana/zaktualizowana. (mtime: 1748417020.2448)
+2025-05-28 17:24:24,272 [INFO    ] [__main__            : 135] Rozpoczynam backup bazy danych 'waifudownloader' do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_172423.sql
+2025-05-28 17:24:24,382 [INFO    ] [__main__            : 157] Backup bazy danych 'waifudownloader' zakończony pomyślnie: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_172423.sql
+2025-05-28 17:24:24,384 [INFO    ] [__main__            : 464] >>> Wszystkie operacje tworzenia backupu zakończone pomyślnie! <<<
+2025-05-28 17:24:28,334 [INFO    ] [__main__            : 395] >>> Rozpoczynanie procesu przywracania z backupu <<<
+2025-05-28 17:24:36,247 [WARNING ] [__main__            : 406] --------------------------------------------------
+2025-05-28 17:24:36,247 [WARNING ] [__main__            : 407] UWAGA: Wybrano przywracanie następującego zestawu backupu:
+2025-05-28 17:24:36,247 [WARNING ] [__main__            : 408]   Data: 2025-05-28 17:24:23
+2025-05-28 17:24:36,247 [WARNING ] [__main__            : 409]   Pliki programu z: program_files_backup_20250528_172423.zip
+2025-05-28 17:24:36,247 [WARNING ] [__main__            : 410]   Baza danych z:    db_waifudownloader_backup_20250528_172423.sql
+2025-05-28 17:24:36,249 [WARNING ] [__main__            : 411] Ta operacja NADPISZE bieżące pliki programu (z wyjątkiem chronionych)
+2025-05-28 17:24:36,249 [WARNING ] [__main__            : 412] oraz CAŁKOWICIE USUNIE i ZASTĄPI bieżącą bazę danych.
+2025-05-28 17:24:36,249 [WARNING ] [__main__            : 413] --------------------------------------------------
+2025-05-28 17:24:39,353 [INFO    ] [__main__            : 422] --- Rozpoczynanie przywracania plików programu ---
+2025-05-28 17:24:39,355 [INFO    ] [__main__            : 223] Rozpoczynam przywracanie plików programu z: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_172423.zip
+2025-05-28 17:24:42,609 [INFO    ] [__main__            : 266] Pomyślnie przywrócono pliki programu z D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_172423.zip do D:\Projekt\Downloadery\WaifuDownloaderGemini
+2025-05-28 17:24:42,609 [INFO    ] [__main__            : 425] --- Przywracanie plików programu zakończone pomyślnie ---
+2025-05-28 17:24:42,609 [INFO    ] [__main__            : 432] --- Rozpoczynanie przywracania bazy danych ---
+2025-05-28 17:24:42,609 [INFO    ] [config_handler      :  78] Wykryto zmianę w config.json lub wymuszono przeładowanie. Przeładowuję... (force=True, changed=False)
+2025-05-28 17:24:42,711 [INFO    ] [config_handler      : 105] Konfiguracja załadowana/zaktualizowana. (mtime: 1748417020.2448)
+2025-05-28 17:24:42,711 [INFO    ] [__main__            : 293] Przywracanie bazy danych 'waifudownloader' z pliku: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_172423.sql
+2025-05-28 17:24:42,711 [INFO    ] [__main__            : 304] Usuwanie istniejącej bazy danych 'waifudownloader'...
