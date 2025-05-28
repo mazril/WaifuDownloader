@@ -1,0 +1,81 @@
+2025-05-28 17:08:08,910 [INFO    ] [__main__            : 163] >>> Rozpoczynanie procesu backupu <<<
+2025-05-28 17:08:08,910 [INFO    ] [__main__            :  48] Utworzono katalog na backupy: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups
+2025-05-28 17:08:08,910 [INFO    ] [__main__            :  63] Rozpoczynam backup plików programu do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_170808.zip
+2025-05-28 17:08:09,569 [INFO    ] [__main__            :  83] Backup plików programu zakończony pomyślnie: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_170808.zip
+2025-05-28 17:08:09,569 [INFO    ] [config_handler      :  78] Wykryto zmianę w config.json lub wymuszono przeładowanie. Przeładowuję... (force=True, changed=False)
+2025-05-28 17:08:09,671 [INFO    ] [config_handler      : 105] Konfiguracja załadowana/zaktualizowana. (mtime: 1748417020.2448)
+2025-05-28 17:08:09,671 [INFO    ] [__main__            : 115] Rozpoczynam backup bazy danych 'waifudownloader' do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_170809.sql
+2025-05-28 17:08:09,705 [ERROR   ] [__main__            : 145] Błąd podczas wykonywania mysqldump (kod: 1).
+Komunikat błędu mysqldump:
+'mysqldump' is not recognized as an internal or external command,
+operable program or batch file.
+
+2025-05-28 17:08:09,707 [ERROR   ] [__main__            : 156] Nieoczekiwany błąd podczas tworzenia backupu bazy danych: [WinError 32] Proces nie może uzyskać dostępu do pliku, ponieważ jest on używany przez inny proces: 'D:\\Projekt\\Downloadery\\WaifuDownloaderGemini\\_backups\\db_waifudownloader_backup_20250528_170809.sql'
+Traceback (most recent call last):
+  File "D:\Projekt\Downloadery\WaifuDownloaderGemini\backup_manager.py", line 148, in backup_mysql_database
+    os.remove(backup_filepath)
+PermissionError: [WinError 32] Proces nie może uzyskać dostępu do pliku, ponieważ jest on używany przez inny proces: 'D:\\Projekt\\Downloadery\\WaifuDownloaderGemini\\_backups\\db_waifudownloader_backup_20250528_170809.sql'
+2025-05-28 17:08:09,707 [WARNING ] [__main__            : 171] >>> Backup plików programu zakończony pomyślnie, ale wystąpił błąd podczas backupu bazy danych. <<<
+2025-05-28 17:11:12,581 [INFO    ] [__main__            : 163] >>> Rozpoczynanie procesu backupu <<<
+2025-05-28 17:11:12,583 [INFO    ] [__main__            :  63] Rozpoczynam backup plików programu do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_171112.zip
+2025-05-28 17:11:12,633 [INFO    ] [__main__            :  83] Backup plików programu zakończony pomyślnie: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_171112.zip
+2025-05-28 17:11:12,635 [INFO    ] [config_handler      :  78] Wykryto zmianę w config.json lub wymuszono przeładowanie. Przeładowuję... (force=True, changed=False)
+2025-05-28 17:11:12,736 [INFO    ] [config_handler      : 105] Konfiguracja załadowana/zaktualizowana. (mtime: 1748417020.2448)
+2025-05-28 17:11:12,736 [INFO    ] [__main__            : 115] Rozpoczynam backup bazy danych 'waifudownloader' do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_171112.sql
+2025-05-28 17:11:12,964 [INFO    ] [__main__            : 136] Backup bazy danych 'waifudownloader' zakończony pomyślnie: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_171112.sql
+2025-05-28 17:11:12,964 [INFO    ] [__main__            : 169] >>> Wszystkie operacje backupu zakończone pomyślnie! <<<
+2025-05-28 17:16:03,754 [INFO    ] [__main__            : 373] >>> Rozpoczynanie procesu backupu <<<
+2025-05-28 17:16:03,754 [INFO    ] [__main__            :  71] Rozpoczynam backup plików programu do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_171603.zip
+2025-05-28 17:16:04,095 [INFO    ] [__main__            :  99] Backup plików programu zakończony pomyślnie: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_171603.zip
+2025-05-28 17:16:04,095 [INFO    ] [config_handler      :  78] Wykryto zmianę w config.json lub wymuszono przeładowanie. Przeładowuję... (force=True, changed=False)
+2025-05-28 17:16:04,197 [INFO    ] [config_handler      : 105] Konfiguracja załadowana/zaktualizowana. (mtime: 1748417020.2448)
+2025-05-28 17:16:04,197 [INFO    ] [__main__            : 129] Rozpoczynam backup bazy danych 'waifudownloader' do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_171604.sql
+2025-05-28 17:16:04,305 [INFO    ] [__main__            : 151] Backup bazy danych 'waifudownloader' zakończony pomyślnie: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_171604.sql
+2025-05-28 17:16:04,305 [INFO    ] [__main__            : 376] >>> Wszystkie operacje backupu zakończone pomyślnie! <<<
+2025-05-28 17:16:09,307 [INFO    ] [__main__            : 388] >>> Rozpoczynanie procesu przywracania z backupu <<<
+2025-05-28 17:16:28,585 [INFO    ] [__main__            : 213] Rozpoczynam przywracanie plików programu z: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_171603.zip
+2025-05-28 17:16:28,587 [WARNING ] [__main__            : 214] UWAGA: Istniejące pliki (z wyjątkiem chronionych) w katalogu projektu zostaną nadpisane!
+2025-05-28 17:16:28,591 [ERROR   ] [__main__            : 234] Błąd podczas przywracania plików programu: [WinError 5] Odmowa dostępu: 'D:\\Projekt\\Downloadery\\WaifuDownloaderGemini\\.git\\objects\\02\\01e592cb79e3d2253b2e5ea7bc5294ea4542e2'
+Traceback (most recent call last):
+  File "D:\Projekt\Downloadery\WaifuDownloaderGemini\backup_manager.py", line 225, in restore_program_files
+    shutil.rmtree(item_path)
+  File "C:\Users\mazx\AppData\Local\Programs\Python\Python312\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\mazx\AppData\Local\Programs\Python\Python312\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\mazx\AppData\Local\Programs\Python\Python312\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Odmowa dostępu: 'D:\\Projekt\\Downloadery\\WaifuDownloaderGemini\\.git\\objects\\02\\01e592cb79e3d2253b2e5ea7bc5294ea4542e2'
+2025-05-28 17:19:18,689 [INFO    ] [__main__            : 429] >>> Rozpoczynanie procesu tworzenia nowego backupu <<<
+2025-05-28 17:19:18,691 [INFO    ] [__main__            :  70] Rozpoczynam backup plików programu do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_171918.zip
+2025-05-28 17:19:18,958 [INFO    ] [__main__            :  96] Backup plików programu zakończony pomyślnie: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_171918.zip
+2025-05-28 17:19:18,958 [INFO    ] [config_handler      :  78] Wykryto zmianę w config.json lub wymuszono przeładowanie. Przeładowuję... (force=True, changed=False)
+2025-05-28 17:19:19,059 [INFO    ] [config_handler      : 105] Konfiguracja załadowana/zaktualizowana. (mtime: 1748417020.2448)
+2025-05-28 17:19:19,059 [INFO    ] [__main__            : 126] Rozpoczynam backup bazy danych 'waifudownloader' do: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_171918.sql
+2025-05-28 17:19:19,179 [INFO    ] [__main__            : 148] Backup bazy danych 'waifudownloader' zakończony pomyślnie: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\db_waifudownloader_backup_20250528_171918.sql
+2025-05-28 17:19:19,179 [INFO    ] [__main__            : 437] >>> Wszystkie operacje tworzenia backupu zakończone pomyślnie! <<<
+2025-05-28 17:19:24,783 [INFO    ] [__main__            : 369] >>> Rozpoczynanie procesu przywracania z backupu <<<
+2025-05-28 17:19:27,770 [WARNING ] [__main__            : 380] --------------------------------------------------
+2025-05-28 17:19:27,772 [WARNING ] [__main__            : 381] UWAGA: Wybrano przywracanie następującego zestawu backupu:
+2025-05-28 17:19:27,772 [WARNING ] [__main__            : 382]   Data: 2025-05-28 17:19:18
+2025-05-28 17:19:27,772 [WARNING ] [__main__            : 383]   Pliki programu z: program_files_backup_20250528_171918.zip
+2025-05-28 17:19:27,772 [WARNING ] [__main__            : 384]   Baza danych z:    db_waifudownloader_backup_20250528_171918.sql
+2025-05-28 17:19:27,772 [WARNING ] [__main__            : 385] Ta operacja NADPISZE bieżące pliki programu (z wyjątkiem chronionych)
+2025-05-28 17:19:27,772 [WARNING ] [__main__            : 386] oraz CAŁKOWICIE USUNIE i ZASTĄPI bieżącą bazę danych.
+2025-05-28 17:19:27,772 [WARNING ] [__main__            : 387] --------------------------------------------------
+2025-05-28 17:19:32,550 [INFO    ] [__main__            : 396] --- Rozpoczynanie przywracania plików programu ---
+2025-05-28 17:19:32,550 [INFO    ] [__main__            : 216] Rozpoczynam przywracanie plików programu z: D:\Projekt\Downloadery\WaifuDownloaderGemini\_backups\program_files_backup_20250528_171918.zip
+2025-05-28 17:19:32,554 [ERROR   ] [__main__            : 237] Błąd podczas przywracania plików programu: [WinError 5] Odmowa dostępu: 'D:\\Projekt\\Downloadery\\WaifuDownloaderGemini\\.git\\objects\\02\\01e592cb79e3d2253b2e5ea7bc5294ea4542e2'
+Traceback (most recent call last):
+  File "D:\Projekt\Downloadery\WaifuDownloaderGemini\backup_manager.py", line 229, in restore_program_files
+    shutil.rmtree(item_path)
+  File "C:\Users\mazx\AppData\Local\Programs\Python\Python312\Lib\shutil.py", line 781, in rmtree
+    return _rmtree_unsafe(path, onexc)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\mazx\AppData\Local\Programs\Python\Python312\Lib\shutil.py", line 635, in _rmtree_unsafe
+    onexc(os.unlink, fullname, err)
+  File "C:\Users\mazx\AppData\Local\Programs\Python\Python312\Lib\shutil.py", line 633, in _rmtree_unsafe
+    os.unlink(fullname)
+PermissionError: [WinError 5] Odmowa dostępu: 'D:\\Projekt\\Downloadery\\WaifuDownloaderGemini\\.git\\objects\\02\\01e592cb79e3d2253b2e5ea7bc5294ea4542e2'
+2025-05-28 17:19:32,554 [ERROR   ] [__main__            : 401] !!! Błąd podczas przywracania plików programu. Sprawdź logi. Rozważ ręczne przywrócenie. !!!
