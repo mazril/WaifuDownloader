@@ -11,7 +11,7 @@ current_config = None
 last_config_mtime = 0.0
 
 def get_default_config():
-    """Zwraca domyślną konfigurację bez sekcji http_server."""
+    """Zwraca domyślną konfigurację (bez sekcji database)."""
     return {
         "scrolling": {
             "wait_for_new": {"value": 10.0, "description": "Czas (s) oczekiwania na nowe elementy podczas przewijania."},
@@ -34,18 +34,25 @@ def get_default_config():
             "gallery_pause": {"value": 5.0, "description": "Pauza (s) po pobraniu całej galerii."},
             "GALLERY_PAUSE_THRESHOLD_MIN": {"value": 25, "description": "Min. liczba galerii do rotacji IP."},
             "GALLERY_PAUSE_THRESHOLD_MAX": {"value": 35, "description": "Max. liczba galerii do rotacji IP."}
+        },
+        "database": {
+            "host": { "value": "localhost", "description": "Host bazy danych MySQL." },
+            "user": { "value": "root", "description": "Użytkownik bazy danych." },
+            "password": { "value": "", "description": "Hasło do bazy danych." },
+            "database": { "value": "waifudownloader", "description": "Nazwa bazy danych." },
+            "port": { "value": 3306, "description": "Port bazy danych." },
+            "pool_size": { "value": 5, "description": "Rozmiar puli połączeń." }
         }
-        # Sekcja http_server została usunięta
     }
 
 def load_config(force_reload=False):
     global current_config, last_config_mtime
 
+    defaults = get_default_config()
     if current_config is None:
-        current_config = get_default_config()
+        current_config = defaults
         logger.debug("current_config zainicjalizowany domyślnymi wartościami po raz pierwszy.")
 
-    defaults = get_default_config()
     reloaded_this_call = False
     config_file_path = constants.CONFIG_FILE_PATH
 
@@ -55,11 +62,7 @@ def load_config(force_reload=False):
             with open(config_file_path, 'w', encoding='utf-8') as f:
                 json.dump(defaults, f, indent=4, ensure_ascii=False)
             current_config = defaults
-            if os.path.exists(config_file_path):
-                 last_config_mtime = os.path.getmtime(config_file_path)
-            else:
-                 last_config_mtime = 0.0
-            logger.debug(f"Domyślny plik konfiguracyjny utworzony. last_config_mtime: {last_config_mtime:.4f}")
+            last_config_mtime = os.path.getmtime(config_file_path) if os.path.exists(config_file_path) else 0.0
             reloaded_this_call = True
         except Exception as e:
             logger.error(f"Błąd tworzenia {config_file_path}: {e}. Używam wbudowanych domyślnych.", exc_info=True)
@@ -78,30 +81,22 @@ def load_config(force_reload=False):
                 loaded_from_file = json.load(f)
 
             config_to_use = get_default_config()
-            for section_key, section_value in defaults.items():
-                # Pomijaj sekcję http_server, jeśli nadal istnieje w pliku
-                if section_key == 'http_server':
-                    continue
 
+            for section_key, section_value in defaults.items():
                 if section_key in loaded_from_file and isinstance(loaded_from_file[section_key], dict):
                     for setting_key, setting_details in section_value.items():
-                        old_key_check = setting_key
-                        if setting_key == 'pause_between_min' and setting_key not in loaded_from_file[section_key] and 'pause_between' in loaded_from_file[section_key]:
-                             old_key_check = 'pause_between'
-                             logger.info(f"Używam starej nazwy 'pause_between' dla '{setting_key}'. Rozważ aktualizację config.json.")
-
-                        if old_key_check in loaded_from_file[section_key] and \
-                           isinstance(loaded_from_file[section_key][old_key_check], dict) and \
-                           'value' in loaded_from_file[section_key][old_key_check]:
+                        if setting_key in loaded_from_file[section_key] and \
+                           isinstance(loaded_from_file[section_key][setting_key], dict) and \
+                           'value' in loaded_from_file[section_key][setting_key]:
                             default_val_type = type(setting_details['value'])
-                            loaded_val = loaded_from_file[section_key][old_key_check]['value']
+                            loaded_val = loaded_from_file[section_key][setting_key]['value']
                             if isinstance(loaded_val, default_val_type):
                                 config_to_use[section_key][setting_key]['value'] = loaded_val
                             else:
                                 logger.warning(f"Niewłaściwy typ wartości dla '{section_key}.{setting_key}'. Oczekiwano {default_val_type}, jest {type(loaded_val)}. Używam domyślnej.")
-                        elif setting_key not in loaded_from_file.get(section_key, {}):
+                        else:
                              logger.debug(f"Klucz '{section_key}.{setting_key}' nie znaleziony w config.json. Używam domyślnej.")
-                elif section_key not in loaded_from_file:
+                else:
                      logger.debug(f"Sekcja '{section_key}' nie znaleziona w config.json. Używam domyślnych.")
 
             current_config = config_to_use
@@ -109,22 +104,28 @@ def load_config(force_reload=False):
             reloaded_this_call = True
             logger.info(f"Konfiguracja załadowana/zaktualizowana. (mtime: {last_config_mtime:.4f})")
         else:
-            logger.debug("Konfiguracja nie wymaga przeładowania (czas modyfikacji bez zmian).")
-
+            logger.debug("Konfiguracja nie wymaga przeładowania.")
 
     except json.JSONDecodeError as e:
-        logger.error(f"Błąd dekodowania JSON w {config_file_path}: {e}. Używam starych/domyślnych ustawień.", exc_info=True)
-        last_config_mtime = 0.0
-    except FileNotFoundError:
-        logger.error(f"Plik konfiguracyjny {config_file_path} nie został znaleziony podczas próby odczytu. Używam starych/domyślnych.")
+        logger.error(f"Błąd dekodowania JSON w {config_file_path}: {e}. Używam starych/domyślnych.", exc_info=True)
         last_config_mtime = 0.0
     except Exception as e:
-        logger.error(f"Nieoczekiwany błąd ładowania {config_file_path}: {e}. Używam starych/domyślnych ustawień.", exc_info=True)
+        logger.error(f"Nieoczekiwany błąd ładowania {config_file_path}: {e}. Używam starych/domyślnych.", exc_info=True)
         last_config_mtime = 0.0
+
+    # Jeśli konfiguracja została przeładowana, poinformuj db_manager, aby ewentualnie odświeżył pulę
+    if reloaded_this_call:
+        try:
+            import db_manager
+            db_manager.initialize_connection_pool() # Spróbuj odświeżyć pulę
+        except ImportError:
+            logger.warning("Nie można zaimportować db_manager do odświeżenia puli.")
+        except Exception as e_pool:
+            logger.error(f"Błąd podczas próby odświeżenia puli DB po przeładowaniu config: {e_pool}")
+
 
     return reloaded_this_call
 
-# Funkcja get_http_server_config() została usunięta.
 
 # Początkowe ładowanie konfiguracji
 if current_config is None:
