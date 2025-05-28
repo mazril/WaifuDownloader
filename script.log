@@ -1,0 +1,32 @@
+2025-05-28 18:46:24,590 [INFO    ] [root                :  46] Logowanie do pliku skonfigurowane: D:\Projekt\Downloadery\WaifuDownloaderGemini\script.log
+2025-05-28 18:46:24,591 [INFO    ] [root                :  51] Poprawnie zainicjowano system logowania.
+2025-05-28 18:46:24,591 [INFO    ] [__main__            :  72] Ustawiam obsługę sygnałów (SIGINT, SIGTERM)...
+2025-05-28 18:46:24,591 [INFO    ] [config_handler      :  78] Wykryto zmianę w config.json lub wymuszono przeładowanie. Przeładowuję... (force=True, changed=False)
+2025-05-28 18:46:24,693 [INFO    ] [config_handler      : 105] Konfiguracja załadowana/zaktualizowana. (mtime: 1748417020.2448)
+2025-05-28 18:46:24,693 [DEBUG   ] [db_manager          :  44] Pula połączeń już istnieje i działa.
+2025-05-28 18:46:24,701 [DEBUG   ] [db_manager          :  44] Pula połączeń już istnieje i działa.
+2025-05-28 18:46:24,701 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5749 z puli.
+2025-05-28 18:46:24,703 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 1, Lastrowid: 0
+2025-05-28 18:46:24,703 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 18:46:24,703 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Skrypt uruchomiony, inicjalizacja DB...
+2025-05-28 18:46:24,703 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5745 z puli.
+2025-05-28 18:46:24,705 [DEBUG   ] [db_manager          :  99] Zapytanie wykonane (fetch_one). Zwrócono: Brak
+2025-05-28 18:46:24,705 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 18:46:24,705 [INFO    ] [data_manager        :  41] Brak 'script_state' w DB, tworzę domyślny.
+2025-05-28 18:46:24,705 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5746 z puli.
+2025-05-28 18:46:24,707 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 1, Lastrowid: 0
+2025-05-28 18:46:24,707 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 18:46:24,707 [INFO    ] [__main__            : 145] Brak zapisanej operacji. Czekam na ewentualne przerwanie (5s) lub wyświetlam menu.
+2025-05-28 18:46:24,707 [INFO    ] [utils               :  62] Oczekiwanie na klawisz (timeout: 5s)...
+2025-05-28 18:46:29,710 [INFO    ] [utils               : 112] Czas na naciśnięcie klawisza minął (Windows).
+2025-05-28 18:46:29,710 [INFO    ] [__main__            : 150] Czas minął, brak operacji. Wyświetlam menu.
+2025-05-28 18:46:29,710 [DEBUG   ] [config_handler      : 107] Konfiguracja nie wymaga przeładowania.
+2025-05-28 18:46:29,710 [DEBUG   ] [__main__            : 164] ML: Sprawdzam kolejkę priorytetową (DB)...
+2025-05-28 18:46:29,710 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5747 z puli.
+2025-05-28 18:46:29,712 [DEBUG   ] [db_manager          : 103] Zapytanie wykonane (fetch_all). Zwrócono: 0 wierszy.
+2025-05-28 18:46:29,712 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 18:46:29,712 [INFO    ] [__main__            : 181] ML: Wyświetlam menu.
+2025-05-28 18:46:29,712 [DEBUG   ] [db_manager          :  80] Pobrano połączenie 5748 z puli.
+2025-05-28 18:46:29,714 [DEBUG   ] [db_manager          :  95] Zapytanie wykonane z COMMIT. Rows affected: 2, Lastrowid: 0
+2025-05-28 18:46:29,714 [DEBUG   ] [db_manager          : 114] Zwrócono połączenie do puli.
+2025-05-28 18:46:29,714 [DEBUG   ] [reporting           :  27] Zaktualizowano current_status w DB: Oczekiwanie na wybór z menu...
