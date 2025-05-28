@@ -81,7 +81,8 @@
         "status_page_host": {
             "value": "192.168.70.90",
             "description": "Adres IP/host używany przez status.html do połączeń fetch (użyj IP serwera dla dostępu z sieci, lub 'localhost' dla dostępu lokalnego)."
-           },
+        } 
+    },
     "database": {
         "host": { "value": "localhost", "description": "Host bazy danych MySQL." },
         "user": { "value": "waifudownloader", "description": "Użytkownik bazy danych." },
