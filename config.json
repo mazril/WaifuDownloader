@@ -84,8 +84,8 @@
            },
     "database": {
         "host": { "value": "localhost", "description": "Host bazy danych MySQL." },
-        "user": { "value": "twoj_uzytkownik", "description": "Użytkownik bazy danych." },
-        "password": { "value": "twoje_haslo", "description": "Hasło do bazy danych." },
+        "user": { "value": "waifudownloader", "description": "Użytkownik bazy danych." },
+        "password": { "value": "vfdsc34Ffgaa307", "description": "Hasło do bazy danych." },
         "database": { "value": "waifudownloader", "description": "Nazwa bazy danych." },
         "port": { "value": 3306, "description": "Port bazy danych (zazwyczaj 3306)." },
         "pool_size": { "value": 5, "description": "Rozmiar puli połączeń dla Pythona." }
