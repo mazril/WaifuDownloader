@@ -3,8 +3,8 @@
 
 // Wypełnij swoimi danymi dostępowymi do bazy danych MySQL
 define('DB_HOST', 'localhost');
-define('DB_USER', 'twoj_uzytkownik');
-define('DB_PASS', 'twoje_haslo');
+define('DB_USER', 'waifudownloader');
+define('DB_PASS', 'vfdsc34Ffgaa307');
 define('DB_NAME', 'waifudownloader');
 define('DB_PORT', 3306); // Domyślny port MySQL
 
