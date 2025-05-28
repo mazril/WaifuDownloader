@@ -81,6 +81,13 @@
         "status_page_host": {
             "value": "192.168.70.90",
             "description": "Adres IP/host używany przez status.html do połączeń fetch (użyj IP serwera dla dostępu z sieci, lub 'localhost' dla dostępu lokalnego)."
-        }
+           },
+    "database": {
+        "host": { "value": "localhost", "description": "Host bazy danych MySQL." },
+        "user": { "value": "twoj_uzytkownik", "description": "Użytkownik bazy danych." },
+        "password": { "value": "twoje_haslo", "description": "Hasło do bazy danych." },
+        "database": { "value": "waifudownloader", "description": "Nazwa bazy danych." },
+        "port": { "value": 3306, "description": "Port bazy danych (zazwyczaj 3306)." },
+        "pool_size": { "value": 5, "description": "Rozmiar puli połączeń dla Pythona." }
     }
 }
