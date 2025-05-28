@@ -15,10 +15,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 
 $action = $_GET['action'] ?? $_POST['action'] ?? null;
 $response = ['success' => false, 'message' => 'Nieznana akcja lub brak akcji.'];
-$pdo = get_db_connection();
+$pdo = get_db_connection(); // Próbuj nawiązać połączenie na początku
 
-if (!$pdo && !in_array($action, ['get_status'])) { 
-    http_response_code(503); 
+// Sprawdzenie połączenia PDO jest teraz bardziej ogólne
+if (!$pdo && !in_array($action, ['get_status'])) { // get_status może próbować działać bez DB dla początkowego komunikatu
+    http_response_code(503); // Service Unavailable
     $response['message'] = 'Błąd serwera: Nie można połączyć się z bazą danych.';
     echo json_encode($response);
     exit();
@@ -57,11 +58,10 @@ switch ($action) {
     case 'get_aggregate':
         $aggregate_data = ['models' => []];
         try {
-            // 1. Pobierz wszystkie modelki
             $stmt_models = $pdo->query("SELECT model_id, model_name, sanitized_name FROM models ORDER BY model_name ASC");
             $models_from_db = $stmt_models->fetchAll(PDO::FETCH_ASSOC);
 
-            $model_map = []; // Mapa model_id -> model_name_original dla szybkiego dostępu
+            $model_map = []; 
             foreach ($models_from_db as $model_row) {
                 $model_name_original = $model_row['model_name'];
                 $model_map[$model_row['model_id']] = $model_name_original;
@@ -74,7 +74,6 @@ switch ($action) {
                 ];
             }
             
-            // Jeśli nie ma modeli w DB, sprawdź lista.txt dla pustych wpisów
             if (empty($models_from_db)) {
                 $models_in_list_txt = read_model_list_from_file();
                 foreach ($models_in_list_txt as $model_name_from_list) {
@@ -91,11 +90,10 @@ switch ($action) {
                 }
             }
 
-            // 2. Pobierz WSZYSTKIE galerie jednym zapytaniem, łącząc z modelami
             $all_galleries_stmt = $pdo->query("
                 SELECT g.gallery_id, g.model_id, g.url, g.original_title, g.determined_title, 
                        g.folder_path, g.expected_count, g.downloaded_count, g.status,
-                       m.model_name AS model_name_from_join 
+                       m.model_name AS model_name_from_join, m.sanitized_name AS model_sanitized_name_from_join
                 FROM galleries g
                 JOIN models m ON g.model_id = m.model_id
                 ORDER BY m.model_name ASC, COALESCE(g.determined_title, g.original_title, g.gallery_id) ASC
@@ -105,15 +103,8 @@ switch ($action) {
             foreach ($all_galleries as $gallery_row) {
                 $model_name_for_gallery = $gallery_row['model_name_from_join'];
 
-                // Upewnij się, że model istnieje w agregacie (powinien, jeśli JOIN działa)
                 if (!isset($aggregate_data['models'][$model_name_for_gallery])) {
-                    // To nie powinno się zdarzyć przy poprawnym JOIN, ale na wszelki wypadek
-                    $sani_name = sanitize_foldername($model_name_for_gallery); // Potrzebne, jeśli model nie był w $models_from_db
-                    $model_entry_check = $pdo->prepare("SELECT sanitized_name FROM models WHERE model_id = :mid");
-                    $model_entry_check->execute([':mid' => $gallery_row['model_id']]);
-                    $sani_name_result = $model_entry_check->fetchColumn();
-                    if($sani_name_result) $sani_name = $sani_name_result;
-
+                    $sani_name = $gallery_row['model_sanitized_name_from_join'] ?: sanitize_foldername($model_name_for_gallery);
                     $aggregate_data['models'][$model_name_for_gallery] = [
                         'galleries' => [],
                         'sanitized_name' => $sani_name,
@@ -121,7 +112,7 @@ switch ($action) {
                         'completed_galleries' => 0,
                         'model_progress' => 0
                     ];
-                    error_log("Ostrzeżenie: Galeria ".$gallery_row['gallery_id']." ma model_id ".$gallery_row['model_id'].", który nie był w początkowej liście modeli.");
+                    error_log("Ostrzeżenie (get_aggregate): Galeria ".$gallery_row['gallery_id']." ma model_id ".$gallery_row['model_id'].", który nie był w początkowej liście modeli. Dodano model: " . $model_name_for_gallery);
                 }
 
                 $is_complete_status = in_array($gallery_row['status'], ["completed", "completed_with_tolerance"]);
@@ -136,7 +127,7 @@ switch ($action) {
 
                 $aggregate_data['models'][$model_name_for_gallery]['galleries'][$gallery_row['gallery_id']] = [
                     'title' => $gallery_row['determined_title'] ?: $gallery_row['original_title'] ?: $gallery_row['gallery_id'],
-                    'folder' => $gallery_row['folder_path'],
+                    'folder' => $gallery_row['folder_path'], // Pełna ścieżka systemowa
                     'expected' => $expected,
                     'downloaded' => $downloaded,
                     'url' => $gallery_row['url'],
@@ -147,15 +138,14 @@ switch ($action) {
                 ];
             }
 
-            // Oblicz postęp dla każdego modelu po przetworzeniu wszystkich jego galerii
-            foreach ($aggregate_data['models'] as $model_name_key => &$model_data_ref) { // Przez referencję
+            foreach ($aggregate_data['models'] as $model_name_key => &$model_data_ref) { 
                 if ($model_data_ref['total_galleries'] > 0) {
                     $model_data_ref['model_progress'] = ($model_data_ref['completed_galleries'] / $model_data_ref['total_galleries'] * 100);
                 } else {
                     $model_data_ref['model_progress'] = 0;
                 }
             }
-            unset($model_data_ref); // Usuń referencję
+            unset($model_data_ref); 
 
         } catch (PDOException $e) {
             error_log("Błąd DB w get_aggregate: " . $e->getMessage());
@@ -166,7 +156,82 @@ switch ($action) {
         echo json_encode($aggregate_data);
         exit();
 
-    // ... (reszta case'ów bez zmian) ...
+    case 'get_gallery_files':
+        $gallery_id = $_GET['gallery_id'] ?? null;
+        if (!$gallery_id) {
+            $response['message'] = "Nie podano ID galerii.";
+            echo json_encode($response);
+            exit();
+        }
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT g.folder_path, m.sanitized_name as model_sanitized_name
+                FROM galleries g
+                JOIN models m ON g.model_id = m.model_id
+                WHERE g.gallery_id = :gallery_id
+            ");
+            $stmt->execute([':gallery_id' => $gallery_id]);
+            $gallery_data = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$gallery_data || empty($gallery_data['folder_path'])) {
+                $response['message'] = "Nie znaleziono ścieżki folderu dla galerii o ID: " . htmlspecialchars($gallery_id) . " lub ścieżka jest pusta.";
+                echo json_encode($response);
+                exit();
+            }
+
+            $absolute_folder_path = $gallery_data['folder_path'];
+            $model_sanitized_name = $gallery_data['model_sanitized_name'];
+            
+            // Wyodrębnienie nazwy folderu galerii ze ścieżki absolutnej
+            // Przykład: D:\...\Modelki\ModelSanitizedName\GalleryFolder_ID -> GalleryFolder_ID
+            $gallery_folder_name_only = basename($absolute_folder_path);
+
+            // Tworzenie ścieżki względnej dla URL
+            // Zakładamy, że BASE_DATA_DIR_NAME ("Modelki") jest bezpośrednio w web root projektu
+            $web_path_segment = BASE_DATA_DIR_NAME . '/' . $model_sanitized_name . '/' . $gallery_folder_name_only;
+
+
+            if (!is_dir($absolute_folder_path)) {
+                $response['message'] = "Folder galerii nie istnieje na serwerze: " . htmlspecialchars($absolute_folder_path);
+                $response['files'] = [];
+                $response['web_path_segment'] = $web_path_segment; // Mimo wszystko zwróć ścieżkę, może się przydać
+                $response['success'] = true; // Sukces, bo znaleźliśmy dane galerii, ale folder jest pusty/nie istnieje
+                echo json_encode($response);
+                exit();
+            }
+
+            $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            $files = [];
+            $dir_iterator = new DirectoryIterator($absolute_folder_path);
+            foreach ($dir_iterator as $fileinfo) {
+                if ($fileinfo->isFile()) {
+                    $extension = strtolower($fileinfo->getExtension());
+                    if (in_array($extension, $allowed_extensions)) {
+                        $files[] = $fileinfo->getFilename();
+                    }
+                }
+            }
+            // Sortuj pliki alfanumerycznie dla spójnej kolejności
+            natsort($files); 
+            $response = [
+                'success' => true,
+                'files' => array_values($files), // array_values do zresetowania kluczy po natsort
+                'web_path_segment' => $web_path_segment, // np. Modelki/ModelName/GalleryFolder_ID
+                'gallery_id' => $gallery_id // Dodajemy ID galerii do odpowiedzi dla JS
+            ];
+
+        } catch (PDOException $e) {
+            error_log("Błąd DB w get_gallery_files dla ID '$gallery_id': " . $e->getMessage());
+            $response['message'] = "Błąd bazy danych podczas pobierania informacji o galerii.";
+        } catch (Exception $e) {
+            error_log("Inny błąd w get_gallery_files dla ID '$gallery_id': " . $e->getMessage());
+            $response['message'] = "Wystąpił nieoczekiwany błąd serwera.";
+        }
+        echo json_encode($response);
+        exit();
+
+
     case 'update_queue':
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $post_data = file_get_contents('php://input');
