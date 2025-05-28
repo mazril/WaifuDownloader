@@ -137,21 +137,27 @@ def initialize_ai_model(model_name=None):
 
     if config_handler.current_config is None: config_handler.load_config()
     
-    # Docelowo: model_name powinien być pobierany z config_handler.current_config
-    # config_ai_model_name = config_handler.current_config.get('ai', {}).get('model_to_use', {}).get('value', constants.AI_MODEL_TO_USE)
-    # model_to_load = model_name if model_name else config_ai_model_name
-    model_to_load = model_name if model_name else constants.AI_MODEL_TO_USE
-
+    model_to_load = model_name if model_name else constants.AI_MODEL_TO_USE # Z constants
 
     logger.info(f"Rozpoczynam ładowanie modelu AI: {model_to_load}...")
     try:
         ai_tokenizer = T5Tokenizer.from_pretrained(model_to_load)
         ai_device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"AI będzie używać urządzenia: {ai_device}")
-        ai_model = T5ForConditionalGeneration.from_pretrained(model_to_load).to(ai_device)
+        
+        if ai_device == "cuda":
+            ai_model = T5ForConditionalGeneration.from_pretrained(model_to_load).to(ai_device)
+        else: # Dla CPU, można spróbować załadować w trybie float16 dla mniejszego zużycia RAM, jeśli model to wspiera
+            try:
+                ai_model = T5ForConditionalGeneration.from_pretrained(model_to_load, torch_dtype=torch.float16).to(ai_device)
+                logger.info("Model AI (CPU) załadowany z torch_dtype=torch.float16.")
+            except Exception:
+                logger.warning("Nie udało się załadować modelu AI (CPU) z float16, próbuję standardowo.")
+                ai_model = T5ForConditionalGeneration.from_pretrained(model_to_load).to(ai_device)
+
         ai_model.eval()
         ai_initialized_successfully = True
-        logger.info("Model AI załadowany pomyślnie.")
+        logger.info(f"Model AI '{model_to_load}' załadowany pomyślnie na urządzeniu '{ai_device}'.")
         return True
     except Exception as e:
         logger.error(f"Krytyczny błąd podczas inicjalizacji modelu AI ({model_to_load}): {e}", exc_info=True)
@@ -159,41 +165,55 @@ def initialize_ai_model(model_name=None):
         ai_tokenizer, ai_model, ai_device, ai_initialized_successfully = None, None, None, False
         return False
 
-def extract_gallery_name_t5(text_to_process, negative_prompts_list=None): # Dodano parametr
+def extract_gallery_name_t5(text_to_process, negative_prompts_list=None, positive_hints_list=None): # Dodano positive_hints_list
     global ai_tokenizer, ai_model, ai_device, ai_initialized_successfully
 
     if not ai_initialized_successfully or not ai_model or not ai_tokenizer:
         logger.warning("Próba użycia AI, ale model nie jest (lub nie został pomyślnie) zainicjalizowany.")
         return "Błąd: Model AI niedostępny"
 
-    base_prompt = f"""Extract 'Character' and 'Series' from the title. If Series is not obvious or too generic like 'Original', output only 'Character'.
-    Example 1: Text: "Victoria Lirell - Princess Zelda - The Legend Of Zelda - 37 photos" Title: Princess Zelda - The Legend Of Zelda
-    Example 2: Text: "Shinano by Kokura Chiyo from Azur Lane" Title: Shinano - Azur Lane
-    Example 3: Text: "Some Artist - Just A Character - 50 photos" Title: Just A Character
-    Example 4: Text: "Cute Girl - Original Character by ArtistX - 22 images" Title: Cute Girl
-    Example 5: Text: "My OC Lily - 12 pics" Title: My OC Lily
-    Text: "{text_to_process}"
+    # Podstawowy prompt
+    base_prompt = f"""Extract 'Character' and 'Series' from the text. If 'Series' is not obvious or too generic like 'Original', output only 'Character'.
+Example 1: Text: "Victoria Lirell - Princess Zelda - The Legend Of Zelda - 37 photos" Title: Princess Zelda - The Legend Of Zelda
+Example 2: Text: "Shinano by Kokura Chiyo from Azur Lane" Title: Shinano - Azur Lane
+Example 3: Text: "Some Artist - Just A Character - 50 photos" Title: Just A Character
+Example 4: Text: "Cute Girl - Original Character by ArtistX - 22 images" Title: Cute Girl
+Example 5: Text: "My OC Lily - 12 pics" Title: My OC Lily
 """
+    # Instrukcja negatywna
     negative_instruction = ""
     if negative_prompts_list and isinstance(negative_prompts_list, list) and len(negative_prompts_list) > 0:
         terms_to_avoid = ", ".join([f"'{term.strip()}'" for term in negative_prompts_list if term.strip()])
         if terms_to_avoid:
-            negative_instruction = f"Important: The generated title MUST NOT include any of these specific names or terms: {terms_to_avoid}.\n"
+            negative_instruction = f"The generated title MUST NOT include any of these specific names or terms: {terms_to_avoid}.\n"
 
-    final_prompt = base_prompt + negative_instruction + "Title:"
+    # Instrukcja pozytywna (wskazówki)
+    positive_instruction = ""
+    if positive_hints_list and isinstance(positive_hints_list, list) and len(positive_hints_list) > 0:
+        preferred_terms = ", ".join([f"'{term.strip()}'" for term in positive_hints_list if term.strip()])
+        if preferred_terms:
+            positive_instruction = f"If possible and relevant, try to include terms like: {preferred_terms} in the title.\n"
 
-    if negative_instruction:
-        logger.debug(f"Używam instrukcji negatywnej: {negative_instruction.strip()}")
-    # logger.debug(f"Pełny prompt dla AI (z instrukcją negatywną jeśli jest): {final_prompt}") # Może być zbyt długi do logowania
+    # Składanie finalnego promptu
+    # Ważne: text_to_process powinien być ostatnim elementem przed "Title:"
+    final_prompt = base_prompt + positive_instruction + negative_instruction + f'Text: "{text_to_process}"\nTitle:'
+
+
+    if positive_instruction: logger.debug(f"Używam pozytywnych wskazówek: {positive_instruction.strip()}")
+    if negative_instruction: logger.debug(f"Używam instrukcji negatywnej: {negative_instruction.strip()}")
+    logger.debug(f"Pełny prompt dla AI:\n{final_prompt}")
 
     try:
         input_ids = ai_tokenizer(final_prompt, return_tensors="pt", max_length=512, truncation=True).input_ids.to(ai_device)
         outputs = ai_model.generate(
             input_ids,
-            max_length=60,
-            num_beams=4,
+            max_length=60,          # Maksymalna długość generowanego tekstu
+            num_beams=5,            # Zwiększenie liczby wiązek może dać lepsze wyniki, ale jest wolniejsze
             early_stopping=True,
-            no_repeat_ngram_size=2
+            no_repeat_ngram_size=2, # Unikanie powtarzania tych samych n-gramów
+            temperature=0.7,        # Można eksperymentować, niższa = bardziej deterministyczne
+            top_k=50,               # Ograniczenie do top_k tokenów przy próbkowaniu
+            top_p=0.95              # Ograniczenie do top_p przy próbkowaniu (nucleus sampling)
         )
         decoded_output = ai_tokenizer.decode(outputs[0], skip_special_tokens=True)
         logger.debug(f"AI zwróciło surowy tytuł: '{decoded_output}'")
@@ -203,32 +223,48 @@ def extract_gallery_name_t5(text_to_process, negative_prompts_list=None): # Doda
         return "Błąd generowania AI"
 
 def post_process_ai_title(raw_title_from_ai):
-    if "Błąd" in raw_title_from_ai:
+    if "Błąd" in raw_title_from_ai or not raw_title_from_ai:
         return ""
 
-    stop_patterns_regex = [
-        r"\s*-\s*\d+\s*(photos|images|pics|zdjęć|obrazków|fotografii).*",
-        r"\s*by\s+.*",
-        r"\s*from\s+.*",
-        r"^\s*(title|Title|tytuł|Tytuł):\s*",
-        r"N/A",
-        r"^\s*-\s*",
-        r"\s*-\s*$",
-        r"Exclusive Set",
-        r"Onlyfans", r"Patreon", r"Fansly",
-        r"Leaks?", r"Leaked",
-        r"Cosplay",
+    # Usuń początkowe "Title: " jeśli model to zwrócił
+    cleaned_title = re.sub(r"^\s*(title|Title|tytuł|Tytuł)\s*:\s*", "", raw_title_from_ai, flags=re.IGNORECASE)
+    
+    # Usuń frazy typu "- X photos", "by Artist", "from Series" na końcu
+    # To jest trudniejsze do zrobienia idealnie uniwersalnie, ale spróbujmy kilka wzorców
+    # Najpierw usuń część z liczbą zdjęć/obrazków itp.
+    cleaned_title = re.sub(r"\s*-\s*\d+\s*(photos|images|pics|zdjęć|obrazków|fotografii|sets|vids|videos|файлов)\s*$", "", cleaned_title, flags=re.IGNORECASE)
+    # Usuń "by [Nazwa Artysty]" na końcu
+    cleaned_title = re.sub(r"\s+by\s+[\w\s.-]+$", "", cleaned_title, flags=re.IGNORECASE)
+    # Usuń "from [Nazwa Serii]" na końcu, jeśli seria nie jest częścią nazwy postaci (trudne)
+    # Na razie zostawmy to, bo seria jest często ważna.
+    # Można dodać bardziej specyficzne reguły, jeśli zauważysz powtarzające się niechciane wzorce.
+
+    # Ogólne czyszczenie
+    stop_phrases = [
+        "N/A", "Exclusive Set", "Onlyfans", "Patreon", "Fansly", "Leaks", "Leaked", "Cosplay",
+        "Model:", "Character:", "Series:", "Original Character", "Original", "OC" # Usuwamy te ogólniki, jeśli AI je dodało
     ]
+    for phrase in stop_phrases:
+        cleaned_title = re.sub(r"(^|\s|-)" + re.escape(phrase) + r"($|\s|-)", r"\1\2", cleaned_title, flags=re.IGNORECASE)
 
-    cleaned_title = raw_title_from_ai
-    for pattern in stop_patterns_regex:
-        cleaned_title = re.sub(pattern, "", cleaned_title, flags=re.IGNORECASE)
 
-    cleaned_title = cleaned_title.strip().rstrip(' -').strip()
+    # Usuń nadmiarowe białe znaki i myślniki
+    cleaned_title = cleaned_title.strip().strip(' -').strip()
+    cleaned_title = re.sub(r'\s*-\s*', ' - ', cleaned_title) # Ujednolić spacje wokół myślników
+    cleaned_title = re.sub(r'\s+', ' ', cleaned_title).strip()
 
+
+    # Jeśli tytuł stał się zbyt krótki lub pusty po czyszczeniu
     if len(cleaned_title) < 3:
-        logger.debug(f"Tytuł po post-processingu ('{cleaned_title}') jest zbyt krótki. Oryginalny AI: '{raw_title_from_ai}'")
-        return ""
+        logger.debug(f"Tytuł po post-processingu ('{cleaned_title}') jest zbyt krótki. Oryginalny AI: '{raw_title_from_ai}' -> Używam oryginalnego przed post-processingiem, jeśli jest dłuższy.")
+        # Wróć do wersji przed agresywnym czyszczeniem jeśli była lepsza
+        if len(raw_title_from_ai.replace("Title:","").strip()) >= 3:
+            # Mniej agresywne czyszczenie dla raw_title
+            raw_cleaned = re.sub(r"^\s*(title|Title|tytuł|Tytuł)\s*:\s*", "", raw_title_from_ai, flags=re.IGNORECASE).strip()
+            raw_cleaned = re.sub(r"\s*-\s*\d+\s*(photos|images|pics|zdjęć|obrazków|fotografii|sets|vids|videos|файлов)\s*$", "", raw_cleaned, flags=re.IGNORECASE).strip()
+            if len(raw_cleaned) >=3 : return raw_cleaned
+
+        return "" # Jeśli nawet surowy był zły
 
     logger.info(f"Tytuł po post-processingu AI: '{cleaned_title}' (oryginalny AI: '{raw_title_from_ai}')")
     return cleaned_title
