@@ -17,7 +17,7 @@
             "description": "Dystans (w pikselach), o jaki strona jest przewijana w jednym 'skoku'. Większa wartość może przyspieszyć przewijanie, ale może też pominąć elementy."
         },
         "spinner_wait_time": {
-            "value": 10.0,
+            "value": 5.0,
             "description": "Maksymalny czas (w sekundach), przez który skrypt będzie czekał, jeśli na stronie pojawi się widoczny wskaźnik ładowania (spinner)."
         },
         "refresh_jumps_main": {
