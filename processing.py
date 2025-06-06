@@ -272,7 +272,21 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
                            fetch_only_initial_data=False,
                            task_payload_for_triggers=None,
                            shutdown_flag_func=None,
-                           collected_gallery_image_links_ref=None): # Słownik przekazywany przez referencję
+                           collected_gallery_image_links_ref=None):
+    """
+    Kompleksowo przetwarza pojedynczą galerię.
+    
+    Opis modyfikacji:
+    - Zmieniono logikę ustalania statusu `completed_with_tolerance`.
+    - Zamiast stałej liczby brakujących plików, funkcja teraz pobiera z konfiguracji
+      procentowy próg `completion_tolerance_percent`.
+    - Status jest ustawiany, jeśli procent pobranych plików jest równy lub większy
+      od zdefiniowanego progu.
+      
+    Wpływ na inne funkcje:
+    - Wymaga zaktualizowanej konfiguracji w `config.json` i `config_handler.py`.
+    - Zmienia kryterium, według którego galerie są uznawane za "prawie" ukończone.
+    """
     
     logger.info(f"PSG_START ({gallery_id_input}): Rozpoczynam przetwarzanie. fetch_only_initial_data: {fetch_only_initial_data}")
     config_handler.load_config()
@@ -514,16 +528,23 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
                 can_update_status_from_download = status_before_final_update not in statuses_preventing_download_strict
                 if can_update_status_from_download:
                     new_status_based_on_download = 'error' 
-                    tolerance_cfg = config_handler.current_config.get('downloading', {}).get('incomplete_gallery_completion_tolerance', {})
-                    tolerance = tolerance_cfg.get('value', 2)
+                    tolerance_percent_cfg = config_handler.current_config.get('downloading', {}).get('completion_tolerance_percent', {})
+                    tolerance_percent = tolerance_percent_cfg.get('value', 95.0)
+                    
                     if expected_final is not None:
-                        if downloaded_final >= expected_final:
+                        if expected_final == 0 and downloaded_final == 0:
                             new_status_based_on_download = 'completed'
-                        elif (expected_final - downloaded_final) <= tolerance and downloaded_final > 0 :
-                            new_status_based_on_download = 'completed_with_tolerance'
-                        elif downloaded_final > 0:
-                            new_status_based_on_download = 'partially_downloaded'
-                    elif downloaded_final > 0: 
+                        elif expected_final > 0:
+                            percentage_downloaded = (downloaded_final / expected_final) * 100
+                            if downloaded_final >= expected_final:
+                                new_status_based_on_download = 'completed'
+                            elif percentage_downloaded >= tolerance_percent:
+                                new_status_based_on_download = 'completed_with_tolerance'
+                            elif downloaded_final > 0:
+                                new_status_based_on_download = 'partially_downloaded'
+                        elif downloaded_final > 0: # expected_final jest None, ale coś pobrano
+                            new_status_based_on_download = 'downloaded_unknown_total'
+                    elif downloaded_final > 0: # expected_final jest None, ale coś pobrano
                         new_status_based_on_download = 'downloaded_unknown_total'
                     
                     if new_status_based_on_download != status_before_final_update:
