@@ -212,7 +212,7 @@ def update_gallery(gallery_id, **kwargs):
         'model_id', 'url', 'original_title', 'source_page_title', 
         'determined_title', 'test_ai_title', 'folder_path', 'expected_count', 
         'downloaded_count', 'status', 'tags_json', 'initial_data_fetched',
-        'last_checked', 'last_downloaded', 'last_processed_timestamp', 'error_message'
+        'last_checked', 'last_downloaded', 'last_processed_timestamp', 'error_message', 'gallery_description'
     ]
     set_clauses = []
     params = []
@@ -305,7 +305,7 @@ def update_gallery_smart(gallery_data, only_if_newer_scan_data=False):
             'initial_data_fetched', 
             'downloaded_count', 
             'source_page_title', 'determined_title', 'test_ai_title', 'folder_path', 'tags_json',
-            'last_checked' 
+            'last_checked', 'gallery_description'
         ]
         
         values_dict = {
@@ -322,7 +322,8 @@ def update_gallery_smart(gallery_data, only_if_newer_scan_data=False):
             'test_ai_title': gallery_data.get('test_ai_title'),       
             'folder_path': gallery_data.get('folder_path'),           
             'tags_json': json.dumps(gallery_data.get('tags_json'), ensure_ascii=False) if gallery_data.get('tags_json') else None, 
-            'last_checked': gallery_data.get('last_checked', time.strftime('%Y-%m-%d %H:%M:%S'))
+            'last_checked': gallery_data.get('last_checked', time.strftime('%Y-%m-%d %H:%M:%S')),
+            'gallery_description': gallery_data.get('gallery_description')
         }
         
         final_columns_for_insert = []
@@ -364,36 +365,55 @@ def update_gallery_smart(gallery_data, only_if_newer_scan_data=False):
         query = f"INSERT INTO galleries ({', '.join(final_columns_for_insert)}) VALUES ({', '.join(final_values_placeholders)})"
         return execute_query(query, tuple(final_values_params), commit=True)
 
-def get_model_galleries_for_processing(model_id, check_mode="all_or_incomplete"): 
+def get_model_galleries_for_processing(model_id, check_mode="all_or_incomplete"):
+    """
+    Pobiera galerie dla danego modelu na podstawie trybu przetwarzania.
+    
+    Opis modyfikacji:
+    - Dodano nową listę statusów `statuses_to_retry_later`, która obejmuje galerie
+      częściowo pobrane.
+    - Główne tryby przetwarzania (`all_or_incomplete`, `only_new_or_count_changed`)
+      teraz celowo ignorują te statusy, aby najpierw zająć się nowymi zadaniami.
+    - Dodano nowy tryb `fill_incomplete_only`, który wyszukuje *wyłącznie*
+      galerie ze statusami z listy `statuses_to_retry_later`.
+      
+    Wpływ na inne funkcje:
+    - Ta funkcja jest kluczowa dla nowej, dwuetapowej logiki przetwarzania.
+      Pozwala `main.py` najpierw przetwarzać nowe galerie, a w drugiej kolejności
+      wracać do tych, które wymagają uzupełnienia.
+    """
     base_query = "SELECT * FROM galleries WHERE model_id = %s"
     conditions = []
-    statuses_fully_processed_for_download = "('completed', 'completed_with_tolerance')" 
+    statuses_fully_processed_for_download = "('completed', 'completed_with_tolerance')"
     statuses_ai_related_to_exclude_from_main_loop = "('pending_production_ai', 'pending_test_ai', 'pending_initial_fetch_prod_ai', 'pending_initial_fetch_test_ai', 'test_completed', 'error_ai_prod', 'error_ai_test', 'error_ai')"
+    # Nowa lista statusów do przetwarzania w drugiej kolejności
+    statuses_to_retry_later = "('partially_downloaded', 'downloaded_unknown_total')"
 
     if check_mode == "only_new_or_count_changed":
         conditions.append(f"""
             (initial_data_fetched = FALSE OR 
              status = 'pending_check' OR
-             status = 'error' OR 
-             (status NOT IN {statuses_fully_processed_for_download} AND 
-              status NOT IN {statuses_ai_related_to_exclude_from_main_loop} AND
-              (expected_count IS NULL OR downloaded_count < expected_count OR status = 'partially_downloaded' OR status = 'downloaded_unknown_total')
-             )
-            )
+             status = 'error'
+            ) AND status NOT IN {statuses_to_retry_later}
         """)
-    elif check_mode == "all_or_incomplete": 
+    elif check_mode == "all_or_incomplete":
         conditions.append(f"""
             (initial_data_fetched = FALSE OR 
              status NOT IN {statuses_fully_processed_for_download}
-            ) AND status NOT IN {statuses_ai_related_to_exclude_from_main_loop} 
+            ) AND status NOT IN {statuses_ai_related_to_exclude_from_main_loop}
+              AND status NOT IN {statuses_to_retry_later}
         """)
-    else: 
+    elif check_mode == "fill_incomplete_only":
+        # Ten tryb jest specjalnie do uzupełniania niekompletnych
+        conditions.append(f"status IN {statuses_to_retry_later}")
+    else:
         logger.warning(f"Nieznany check_mode: {check_mode} w get_model_galleries_for_processing.")
         return []
     
     query = f"{base_query} AND ({' OR '.join(conditions)}) ORDER BY original_title ASC, gallery_id DESC"
     logger.info(f"Zapytanie dla get_model_galleries_for_processing (model_id: {model_id}, mode: {check_mode}): {query % (model_id,)}") 
     return execute_query(query, (model_id,), fetch_all=True) or []
+
 
 def get_incomplete_galleries_db_for_queue(): 
     statuses_definitely_complete = "('completed', 'completed_with_tolerance')" 
