@@ -15,6 +15,19 @@ CONFIG_FILE_PATH_CONST = os.path.join(SCRIPT_DIR_CONFIG, CONFIG_FILENAME_CONST)
 
 
 def get_default_config():
+    """
+    Zwraca domyślną strukturę konfiguracji.
+    
+    Opis modyfikacji:
+    - Zmieniono nazwę klucza `incomplete_gallery_completion_tolerance` na
+      `completion_tolerance_percent` w sekcji `downloading`.
+    - Zaktualizowano domyślną wartość na 95.0 i opis, aby odzwierciedlał,
+      że jest to próg procentowy.
+      
+    Wpływ na inne funkcje:
+    - Ta zmiana wymaga aktualizacji logiki w `processing.py`, która odczytuje
+      tę wartość do ustalania statusu `completed_with_tolerance`.
+    """
     return {
         "scrolling": {
             "wait_for_new": {"value": 10.0, "description": "Czas (s) oczekiwania na nowe elementy podczas przewijania."},
@@ -31,14 +44,15 @@ def get_default_config():
         "downloading": {
             "download_delay_min": {"value": 0.8, "description": "Min. czas (s) oczekiwania przed pobraniem obrazka."},
             "download_delay_max": {"value": 1.6, "description": "Max. czas (s) oczekiwania przed pobraniem obrazka."},
-            "incomplete_gallery_completion_tolerance": {"value": 4, "description": "Maksymalna liczba brakujących obrazów, przy której galeria jest nadal uznawana za 'ukończoną z tolerancją'."}
+            "completion_tolerance_percent": {"value": 95.0, "description": "Procent pobranych plików (np. 95), przy którym galeria jest uznawana za 'ukończoną z tolerancją'."}
         },
         "pauses_and_rotation": {
             "gallery_pause": {"value": 5.0, "description": "Pauza (s) po pobraniu całej galerii."},
             "GALLERY_PAUSE_THRESHOLD_MIN": {"value": 25, "description": "Min. liczba galerii do rotacji IP."},
-            "GALLERY_PAUSE_THRESHOLD_MAX": {"value": 35, "description": "Max. liczba galerii do rotacji IP."}
+            "GALLERY_PAUSE_THRESHOLD_MAX": {"value": 35, "description": "Max. liczba galerii do rotacji IP."},
+            "ai_worker_loop_delay": {"value": 15, "description": "Opóźnienie (s) między kolejnymi cyklami pętli workera AI."}
         },
-        "database": { #
+        "database": {
             "host": { "value": "localhost", "description": "Host bazy danych MySQL." },
             "user": { "value": "root", "description": "Użytkownik bazy danych." }, 
             "password": { "value": "", "description": "Hasło do bazy danych." }, 
