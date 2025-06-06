@@ -204,7 +204,18 @@ def get_model_galleries(model_id):
     query = "SELECT * FROM galleries WHERE model_id = %s ORDER BY gallery_id DESC" 
     return execute_query(query, (model_id,), fetch_all=True)
 
-def update_gallery(gallery_id, **kwargs): 
+def update_gallery(gallery_id, **kwargs):
+    """
+    Aktualizuje określone kolumny dla danej galerii w bazie danych.
+    
+    Opis modyfikacji:
+    - Do listy `valid_columns` dodano nowe kolumny: `links_collected` oraz
+      `image_links_json`, aby umożliwić ich aktualizację.
+      
+    Wpływ na inne funkcje:
+    - Umożliwia funkcji `process_single_gallery` zapisywanie zebranych linków
+      i flagi do bazy danych, co jest podstawą nowego, trwałego mechanizmu.
+    """
     if not kwargs:
         logger.warning(f"Wywołano update_gallery bez żadnych argumentów do aktualizacji dla {gallery_id}.")
         return False 
@@ -212,16 +223,17 @@ def update_gallery(gallery_id, **kwargs):
         'model_id', 'url', 'original_title', 'source_page_title', 
         'determined_title', 'test_ai_title', 'folder_path', 'expected_count', 
         'downloaded_count', 'status', 'tags_json', 'initial_data_fetched',
-        'last_checked', 'last_downloaded', 'last_processed_timestamp', 'error_message', 'gallery_description'
+        'last_checked', 'last_downloaded', 'last_processed_timestamp', 'error_message', 'gallery_description',
+        'links_collected', 'image_links_json'
     ]
     set_clauses = []
     params = []
     for key, value in kwargs.items():
         if key in valid_columns:
             set_clauses.append(f"`{key}` = %s") 
-            if key == 'initial_data_fetched' and isinstance(value, bool):
+            if key in ['initial_data_fetched', 'links_collected'] and isinstance(value, bool):
                 params.append(1 if value else 0) 
-            elif key == 'tags_json' and isinstance(value, (dict, list)):
+            elif key in ['tags_json', 'image_links_json'] and isinstance(value, (dict, list)):
                  params.append(json.dumps(value, ensure_ascii=False))
             else:
                 params.append(value)
@@ -366,45 +378,28 @@ def update_gallery_smart(gallery_data, only_if_newer_scan_data=False):
         return execute_query(query, tuple(final_values_params), commit=True)
 
 def get_model_galleries_for_processing(model_id, check_mode="all_or_incomplete"):
-    """
-    Pobiera galerie dla danego modelu na podstawie trybu przetwarzania.
-    
-    Opis modyfikacji:
-    - Dodano nową listę statusów `statuses_to_retry_later`, która obejmuje galerie
-      częściowo pobrane.
-    - Główne tryby przetwarzania (`all_or_incomplete`, `only_new_or_count_changed`)
-      teraz celowo ignorują te statusy, aby najpierw zająć się nowymi zadaniami.
-    - Dodano nowy tryb `fill_incomplete_only`, który wyszukuje *wyłącznie*
-      galerie ze statusami z listy `statuses_to_retry_later`.
-      
-    Wpływ na inne funkcje:
-    - Ta funkcja jest kluczowa dla nowej, dwuetapowej logiki przetwarzania.
-      Pozwala `main.py` najpierw przetwarzać nowe galerie, a w drugiej kolejności
-      wracać do tych, które wymagają uzupełnienia.
-    """
     base_query = "SELECT * FROM galleries WHERE model_id = %s"
     conditions = []
     statuses_fully_processed_for_download = "('completed', 'completed_with_tolerance')"
     statuses_ai_related_to_exclude_from_main_loop = "('pending_production_ai', 'pending_test_ai', 'pending_initial_fetch_prod_ai', 'pending_initial_fetch_test_ai', 'test_completed', 'error_ai_prod', 'error_ai_test', 'error_ai')"
-    # Nowa lista statusów do przetwarzania w drugiej kolejności
     statuses_to_retry_later = "('partially_downloaded', 'downloaded_unknown_total')"
 
     if check_mode == "only_new_or_count_changed":
         conditions.append(f"""
             (initial_data_fetched = FALSE OR 
+             links_collected = FALSE OR
              status = 'pending_check' OR
              status = 'error'
             ) AND status NOT IN {statuses_to_retry_later}
         """)
     elif check_mode == "all_or_incomplete":
         conditions.append(f"""
-            (initial_data_fetched = FALSE OR 
-             status NOT IN {statuses_fully_processed_for_download}
+            ( (initial_data_fetched = FALSE OR links_collected = FALSE) OR 
+             (status NOT IN {statuses_fully_processed_for_download})
             ) AND status NOT IN {statuses_ai_related_to_exclude_from_main_loop}
               AND status NOT IN {statuses_to_retry_later}
         """)
     elif check_mode == "fill_incomplete_only":
-        # Ten tryb jest specjalnie do uzupełniania niekompletnych
         conditions.append(f"status IN {statuses_to_retry_later}")
     else:
         logger.warning(f"Nieznany check_mode: {check_mode} w get_model_galleries_for_processing.")
@@ -415,6 +410,24 @@ def get_model_galleries_for_processing(model_id, check_mode="all_or_incomplete")
     return execute_query(query, (model_id,), fetch_all=True) or []
 
 
+def get_ready_to_download_galleries_for_model(model_id):
+    """
+    Pobiera galerie dla danego modelu, które mają już nazwę od AI i są gotowe do pobrania.
+    
+    Opis modyfikacji:
+    - Dodano warunek `links_collected = TRUE`, aby upewnić się, że pobieramy
+      tylko te galerie, dla których linki zostały już zebrane i zapisane w DB.
+    """
+    query = """
+        SELECT * FROM galleries 
+        WHERE model_id = %s 
+          AND determined_title IS NOT NULL
+          AND links_collected = TRUE
+          AND status NOT IN ('completed', 'completed_with_tolerance', 'partially_downloaded', 'downloaded_unknown_total')
+        ORDER BY original_title ASC, gallery_id DESC
+    """
+    return execute_query(query, (model_id,), fetch_all=True) or []
+
 def get_incomplete_galleries_db_for_queue(): 
     statuses_definitely_complete = "('completed', 'completed_with_tolerance')" 
     statuses_ai_cycle_to_exclude = "('pending_production_ai', 'pending_test_ai', 'pending_initial_fetch_prod_ai', 'pending_initial_fetch_test_ai', 'test_completed', 'error_ai_test', 'error_ai_prod', 'error_ai')"
@@ -423,7 +436,7 @@ def get_incomplete_galleries_db_for_queue():
         FROM galleries g
         JOIN models m ON g.model_id = m.model_id
         WHERE 
-          (g.initial_data_fetched = FALSE OR g.status = 'pending_check' OR g.status = 'error') OR 
+          (g.initial_data_fetched = FALSE OR g.status = 'pending_check' OR g.status = 'error' OR g.links_collected = FALSE) OR 
           (g.status NOT IN {statuses_definitely_complete} AND 
            g.status NOT IN {statuses_ai_cycle_to_exclude} AND
            (g.expected_count IS NULL OR g.downloaded_count < g.expected_count)
@@ -470,7 +483,7 @@ def get_priority_queue():
                         item_data = {"raw_data": item_data_str, "decode_error": str(jd_err)}
 
                 queue.append({"type": row['item_type'], 
-                              "payload": item_data, # Używamy klucza "payload" spójnie
+                              "payload": item_data,
                               "priority": row.get('priority')}) 
             except Exception as e_pq: 
                 logger.error(f"Błąd przetwarzania wiersza kolejki: {row}. Błąd: {e_pq}")
@@ -487,10 +500,8 @@ def save_priority_queue(queue_data):
             sql = "INSERT INTO priority_queue (item_type, item_data, priority, added_timestamp) VALUES (%s, %s, %s, NOW())"
             params_list = []
             for index, item in enumerate(queue_data):
-                # ZMIANA: Konsekwentnie używaj 'payload'
                 item_data_to_save = item.get('payload', {}) 
                 item_data_json = json.dumps(item_data_to_save, ensure_ascii=False)
-                # Użyj priorytetu z elementu, jeśli jest, inaczej wygeneruj
                 priority = item.get('priority', index * 10) 
                 
                 params_list.append((item['type'], item_data_json, priority))
@@ -527,7 +538,7 @@ def get_ai_prompt_config_from_db(config_id='production'):
 
 def add_to_priority_queue(item_type, item_data, add_to_front=False):
     current_queue = get_priority_queue() 
-    new_item = {"type": item_type, "payload": item_data} # Używamy "payload"
+    new_item = {"type": item_type, "payload": item_data} 
 
     item_id_to_check = None
     if isinstance(item_data, dict):
@@ -538,7 +549,7 @@ def add_to_priority_queue(item_type, item_data, add_to_front=False):
     is_duplicate = False
     if item_id_to_check:
         for item in current_queue:
-            payload_in_queue = item.get('payload', {}) # Sprawdzamy "payload"
+            payload_in_queue = item.get('payload', {})
             type_in_queue = item.get('type')
 
             if type_in_queue == item_type:
