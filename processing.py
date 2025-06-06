@@ -184,6 +184,90 @@ def _scan_new_model_page(driver, model_name_original, shutdown_flag_func=None):
     except Exception as e: logger.exception(f"Krytyczny błąd skanowania strony modelki {model_name_original}: {e}")
 
 
+def _refresh_galleries_data_for_model(driver, model_name_original, shutdown_flag_func=None):
+    """
+    Odwiedza każdą galerię modelki, która nie ma jeszcze pobranych danych inicjalnych,
+    i pobiera te dane (tytuł, opis, tagi) bez pełnego scrollowania.
+    
+    Opis modyfikacji:
+    To nowa funkcja stworzona w odpowiedzi na prośbę użytkownika. Jej celem jest
+    wzbogacenie danych o galeriach poprzez wejście na ich strony i pobranie
+    dodatkowych informacji, które nie są dostępne na stronie głównej modelki.
+    Jest wywoływana przez zadanie 'scan_model_refresh_only'.
+    
+    Wpływ na inne funkcje:
+    - Wywoływana przez `handle_priority_item`.
+    - Używa funkcji pomocniczych do ekstrakcji danych (`_get_gallery_page_title_candidate` itp.).
+    - Aktualizuje bazę danych za pomocą `db_manager.update_gallery`.
+    - Celowo pomija `scroll_until_timeout`, aby przyspieszyć proces.
+    """
+    logger.info(f"Rozpoczynam odświeżanie danych wewnątrz galerii dla modelki: {model_name_original}")
+    model_id = db_manager.get_or_create_model(model_name_original)
+    if not model_id:
+        logger.error(f"Nie udało się uzyskać ID dla modelki {model_name_original}. Przerywam odświeżanie.")
+        return
+
+    galleries_to_check = db_manager.get_model_galleries(model_id)
+    if not galleries_to_check:
+        logger.info(f"Brak galerii w bazie danych dla modelki {model_name_original}. Nic do zrobienia.")
+        return
+        
+    logger.info(f"Znaleziono {len(galleries_to_check)} galerii dla {model_name_original}. Sprawdzam, które wymagają pobrania danych...")
+
+    for i, gallery in enumerate(galleries_to_check):
+        if _is_shutdown_requested_processing(shutdown_flag_func):
+            logger.info("Przerwano odświeżanie danych galerii z powodu żądania zamknięcia.")
+            break
+
+        gallery_id = gallery.get('gallery_id')
+        if gallery.get('initial_data_fetched'):
+            logger.debug(f"Pomijam galerię {gallery_id}, ponieważ ma już pobrane dane inicjalne (initial_data_fetched=True).")
+            continue
+
+        gallery_url = gallery.get('url')
+        if not gallery_url:
+            logger.warning(f"Pomijam galerię {gallery_id}, ponieważ nie ma zapisanego URL.")
+            continue
+            
+        logger.info(f"({i+1}/{len(galleries_to_check)}) Przetwarzam galerię: {gallery_id} (URL: {gallery_url})")
+        reporting.update_current_status(
+            f"Odświeżanie opisu {i+1}/{len(galleries_to_check)}",
+            model=model_name_original, gallery=gallery.get('original_title') or gallery_id,
+            gallery_id=gallery_id, is_processing=True
+        )
+
+        try:
+            driver_utils.safe_driver_get(driver, gallery_url, shutdown_flag_func=shutdown_flag_func)
+            
+            page_derived_title = _get_gallery_page_title_candidate(driver)
+            cosplay_tags, fandom_tags = _extract_cosplay_fandom_tags(driver)
+            description = _get_gallery_description(driver)
+
+            updates = {
+                'initial_data_fetched': True,
+                'last_processed_timestamp': time.strftime('%Y-%m-%d %H:%M:%S')
+            }
+            if page_derived_title:
+                updates['source_page_title'] = page_derived_title
+            if description:
+                updates['gallery_description'] = description
+            if cosplay_tags or fandom_tags:
+                updates['tags_json'] = json.dumps({"cosplay": cosplay_tags, "fandom": fandom_tags}, ensure_ascii=False)
+            
+            db_manager.update_gallery(gallery_id, **updates)
+            logger.info(f"  Sukces: Zaktualizowano dane dla galerii {gallery_id}.")
+            
+            time.sleep(random.uniform(1.0, 2.5))
+
+        except constants.RestartRequiredError:
+            raise
+        except Exception as e:
+            logger.error(f"  Błąd podczas odświeżania danych dla galerii {gallery_id}: {e}", exc_info=True)
+            db_manager.update_gallery(gallery_id, status='error', error_message=f"Refresh data error: {str(e)[:200]}")
+            
+    logger.info(f"Zakończono odświeżanie danych wewnątrz galerii dla {model_name_original}.")
+
+
 def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_input,
                            fetch_only_initial_data=False,
                            task_payload_for_triggers=None,
@@ -473,6 +557,18 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
 
 
 def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None, collected_gallery_image_links_ref=None):
+    """
+    Przetwarza pojedynczy element z kolejki priorytetowej.
+    Opis modyfikacji:
+    Rozdzielono logikę dla `scan_model` i `scan_model_refresh_only`. Zadanie odświeżania
+    wywołuje teraz nową funkcję `_refresh_galleries_data_for_model`, która wchodzi
+    w głąb galerii w celu zebrania opisów, zgodnie z prośbą.
+    
+    Wpływ na inne funkcje:
+    - Kluczowa zmiana w logice aplikacji. Teraz ta funkcja decyduje, czy
+      wykonać płytkie skanowanie strony modelki (dla `scan_model`), czy
+      głębokie skanowanie jej galerii (dla `scan_model_refresh_only`).
+    """
     config_handler.load_config()
     item_type, payload = item.get("type"), item.get("payload")
     item_display_info = str(payload.get("id", str(payload))) if isinstance(payload, dict) else str(payload)
@@ -526,11 +622,18 @@ def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None, co
              logger.error(f"HPI Error ({item_display_info}): Nie udało się uzyskać drivera dla {item_type}. Pomijam.")
              return True 
 
-        if item_type == "scan_model" or item_type == "scan_model_refresh_only":
+        if item_type == "scan_model":
             model_name_to_scan = str(payload)
-            status_msg = "Priorytet: Odświeżanie modelu" if item_type == "scan_model_refresh_only" else "Priorytet: Skanowanie modelu"
+            status_msg = "Priorytet: Skanowanie i uzupełnianie modelu"
             reporting.update_current_status(status_msg, model=model_name_to_scan, is_processing=True)
             _scan_new_model_page(driver_hpi, model_name_to_scan, shutdown_flag_func=shutdown_flag_func)
+            reporting.update_current_status(f"Zakończono {status_msg} dla {model_name_to_scan}", model=model_name_to_scan, is_processing=False)
+
+        elif item_type == "scan_model_refresh_only":
+            model_name_to_scan = str(payload)
+            status_msg = "Priorytet: Odświeżanie opisów galerii modelu"
+            reporting.update_current_status(status_msg, model=model_name_to_scan, is_processing=True)
+            _refresh_galleries_data_for_model(driver_hpi, model_name_to_scan, shutdown_flag_func=shutdown_flag_func)
             reporting.update_current_status(f"Zakończono {status_msg} dla {model_name_to_scan}", model=model_name_to_scan, is_processing=False)
 
         elif item_type == "gallery":
