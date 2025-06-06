@@ -5,7 +5,7 @@
             "description": "Maksymalny czas (w sekundach), przez który skrypt będzie czekał na pojawienie się nowych elementów na stronie podczas przewijania, zanim podejmie próbę odświeżenia pozycji."
         },
         "pause_between_min": {
-            "value": 0.1,
+            "value": 0.05,
             "description": "Minimalna pauza (w sekundach) między kolejnymi 'skokami' podczas przewijania strony. Zapobiega zbyt szybkiemu przewijaniu."
         },
         "pause_between_max": {
