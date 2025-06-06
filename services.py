@@ -82,4 +82,4 @@ def download_image(url, dest_filepath):
     if os.path.exists(dest_filepath):
         try: os.remove(dest_filepath); logger.info(f"Usunięto niekompletny plik {os.path.basename(dest_filepath)}.")
         except Exception as e_remove: logger.warning(f"Nie udało się usunąć niekompletnego pliku {os.path.basename(dest_filepath)}: {e_remove}")
-    return False
+    return False 
