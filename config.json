@@ -1,122 +1,118 @@
 {
     "scrolling": {
         "wait_for_new": {
-            "value": 20,
-            "description": "Czas (s) oczekiwania na nowe elementy podczas przewijania."
+            "value": 15.0,
+            "description": "Maksymalny czas (w sekundach), przez który skrypt będzie czekał na pojawienie się nowych elementów na stronie podczas przewijania, zanim podejmie próbę odświeżenia pozycji."
         },
         "pause_between_min": {
-            "value": 0.1,
-            "description": "Minimalna pauza (s) pomi\u0119dzy kolejnymi 'skokami' przewijania."
+            "value": 0.2,
+            "description": "Minimalna pauza (w sekundach) między kolejnymi 'skokami' podczas przewijania strony. Zapobiega zbyt szybkiemu przewijaniu."
         },
         "pause_between_max": {
-            "value": 0.3,
-            "description": "Maksymalna pauza (s) pomi\u0119dzy kolejnymi 'skokami' przewijania."
+            "value": 0.4,
+            "description": "Maksymalna pauza (w sekundach) między kolejnymi 'skokami' podczas przewijania. Wprowadza losowość, symulując ludzkie zachowanie."
         },
         "jump_distance": {
-            "value": 220,
-            "description": "Odleg\u0142o\u015b\u0107 przewijania (px)."
+            "value": 450,
+            "description": "Dystans (w pikselach), o jaki strona jest przewijana w jednym 'skoku'. Większa wartość może przyspieszyć przewijanie, ale może też pominąć elementy."
         },
         "spinner_wait_time": {
-            "value": 6,
-            "description": "Max. czas (s) oczekiwania, gdy widoczny jest spinner \u0142adowania."
+            "value": 15.0,
+            "description": "Maksymalny czas (w sekundach), przez który skrypt będzie czekał, jeśli na stronie pojawi się widoczny wskaźnik ładowania (spinner)."
         },
         "refresh_jumps_main": {
-            "value": 3,
-            "description": "Skoki g\u00f3ra/d\u00f3\u0142 przy od\u015bwie\u017caniu na stronie modelu."
+            "value": 4,
+            "description": "Liczba skoków 'góra/dół' wykonywanych podczas odświeżania pozycji na głównej stronie modelki, gdy skrypt uzna, że nic nowego się nie ładuje."
         },
         "gallery_up_jumps": {
             "value": 5,
-            "description": "Skoki w g\u00f3r\u0119 przy od\u015bwie\u017caniu w galerii."
+            "description": "Liczba skoków w górę podczas próby odświeżenia pozycji na stronie galerii (gdy wykryto sekcję 'YOU MAY ALSO LIKE')."
         },
         "gallery_down_jumps": {
             "value": 3,
-            "description": "Skoki w d\u00f3\u0142 przy od\u015bwie\u017caniu w galerii."
+            "description": "Liczba skoków w dół podczas próby odświeżenia pozycji na stronie galerii (gdy wykryto sekcję 'YOU MAY ALSO LIKE')."
         },
         "max_refresh": {
-            "value": 1,
-            "description": "Max. pr\u00f3b od\u015bwie\u017cenia przewijania."
+            "value": 2,
+            "description": "Maksymalna liczba prób odświeżenia pozycji przewijania na jednej stronie, zanim skrypt uzna, że załadowano wszystkie elementy."
         },
         "MAX_YMAL_CONSECUTIVE_CORRECTIONS": {
             "value": 4,
-            "description": "Max. korekt dla sekcji 'YOU MAY ALSO LIKE:'."
+            "description": "Maksymalna liczba kolejnych korekt pozycji przewijania w górę, gdy skrypt wykryje sekcję 'YOU MAY ALSO LIKE' w widocznym obszarze."
         }
     },
     "downloading": {
         "download_delay_min": {
             "value": 0.8,
-            "description": "Min. czas (s) oczekiwania przed pobraniem obrazka."
+            "description": "Minimalny czas (w sekundach) oczekiwania przed pobraniem każdego kolejnego obrazka. Wprowadza losowe opóźnienie, aby uniknąć blokady."
         },
         "download_delay_max": {
-            "value": 1.3,
-            "description": "Max. czas (s) oczekiwania przed pobraniem obrazka."
+            "value": 1.6,
+            "description": "Maksymalny czas (w sekundach) oczekiwania przed pobraniem każdego kolejnego obrazka."
         },
-        "incomplete_gallery_completion_tolerance": {
-            "value": 5,
-            "description": "Maksymalna liczba brakuj\u0105cych obraz\u00f3w, przy kt\u00f3rej galeria jest nadal uznawana za 'uko\u0144czon\u0105 z tolerancj\u0105'."
+        "completion_tolerance_percent": {
+            "value": 80.0,
+            "description": "Procent pobranych plików (np. 95.0), przy którym galeria jest uznawana za 'ukończoną z tolerancją', nawet jeśli brakuje kilku plików."
         }
     },
     "pauses_and_rotation": {
         "gallery_pause": {
-            "value": 5,
-            "description": "Pauza (s) po pobraniu ca\u0142ej galerii."
+            "value": 5.0,
+            "description": "Pauza (w sekundach) po zakończeniu przetwarzania (pobierania) całej galerii, przed przejściem do następnej."
         },
         "GALLERY_PAUSE_THRESHOLD_MIN": {
             "value": 25,
-            "description": "Min. liczba galerii do rotacji IP."
+            "description": "Minimalna liczba przetworzonych galerii, po której może nastąpić rotacja połączenia VPN (jeśli jest skonfigurowana)."
         },
         "GALLERY_PAUSE_THRESHOLD_MAX": {
             "value": 35,
-            "description": "Max. liczba galerii do rotacji IP."
-        }
-    },
-    "http_server": {
-        "bind_host": {
-            "value": "0.0.0.0",
-            "description": "Adres IP, na kt\u00f3rym serwer nas\u0142uchuje ('0.0.0.0' = wszystkie, '127.0.0.1' = lokalnie, lub konkretne IP np. '192.168.70.90')."
+            "description": "Maksymalna liczba przetworzonych galerii, po której może nastąpić rotacja połączenia VPN. Próg jest losowany z tego przedziału."
         },
-        "port": {
-            "value": 8123,
-            "description": "Port serwera HTTP."
-        },
-        "status_page_host": {
-            "value": "192.168.70.90",
-            "description": "Adres IP/host u\u017cywany przez status.html do po\u0142\u0105cze\u0144 fetch (u\u017cyj IP serwera dla dost\u0119pu z sieci, lub 'localhost' dla dost\u0119pu lokalnego)."
+        "ai_worker_loop_delay": {
+            "value": 15,
+            "description": "Opóźnienie (w sekundach) między kolejnymi cyklami sprawdzania zadań przez dedykowanego workera AI (testai_worker.py)."
         }
     },
     "database": {
         "host": {
             "value": "localhost",
-            "description": "Host bazy danych MySQL."
+            "description": "Adres hosta bazy danych MySQL/MariaDB (np. 'localhost' lub IP serwera)."
         },
         "user": {
             "value": "waifudownloader",
-            "description": "U\u017cytkownik bazy danych."
+            "description": "Nazwa użytkownika bazy danych."
         },
         "password": {
             "value": "vfdsc34Ffgaa307",
-            "description": "Has\u0142o do bazy danych."
+            "description": "Hasło dla podanego użytkownika bazy danych."
         },
         "database": {
             "value": "waifudownloader",
-            "description": "Nazwa bazy danych."
+            "description": "Nazwa bazy danych używanej przez aplikację."
         },
         "port": {
             "value": 3306,
-            "description": "Port bazy danych (zazwyczaj 3306)."
+            "description": "Port, na którym nasłuchuje serwer bazy danych (domyślnie 3306)."
         },
         "pool_size": {
             "value": 5,
-            "description": "Rozmiar puli po\u0142\u0105cze\u0144 dla Pythona."
+            "description": "Maksymalna liczba otwartych połączeń do bazy danych, utrzymywanych w puli przez skrypty Python."
+        }
+    },
+    "paths": {
+        "base_data_dir_name": {
+            "value": "Modelki",
+            "description": "Nazwa głównego folderu, w którym będą zapisywane wszystkie pobrane galerie, posortowane według nazw modelek."
         }
     },
     "ai_settings": {
         "api_base_url": {
             "value": "http://192.168.3.4:11434/",
-            "description": "G\u0142\u00f3wny adres URL serwera Ollama."
+            "description": "Pełny adres URL serwera Ollama, używany do generowania tytułów galerii przez AI (np. 'http://localhost:11434')."
         },
         "default_model_name": {
             "value": "llama3:latest",
-            "description": "Domy\u015blny model Ollama u\u017cywany, gdy nie jest zdefiniowany w prompcie."
+            "description": "Domyślny model językowy Ollama (np. 'llama3:latest'), który będzie używany, jeśli nie zostanie określony inny w konfiguracji konkretnego promptu w bazie danych."
         }
     }
 }
