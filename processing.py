@@ -277,15 +277,9 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
     Kompleksowo przetwarza pojedynczą galerię.
     
     Opis modyfikacji:
-    - Zmieniono logikę ustalania statusu `completed_with_tolerance`.
-    - Zamiast stałej liczby brakujących plików, funkcja teraz pobiera z konfiguracji
-      procentowy próg `completion_tolerance_percent`.
-    - Status jest ustawiany, jeśli procent pobranych plików jest równy lub większy
-      od zdefiniowanego progu.
-      
-    Wpływ na inne funkcje:
-    - Wymaga zaktualizowanej konfiguracji w `config.json` i `config_handler.py`.
-    - Zmienia kryterium, według którego galerie są uznawane za "prawie" ukończone.
+    - Usunięto logikę aktywnego czekania na AI. Funkcja powraca do swojego pierwotnego,
+      asynchronicznego zachowania: zleca zadanie dla AI i przechodzi dalej,
+      zgodnie z nową logiką zaimplementowaną w `handle_process_models`.
     """
     
     logger.info(f"PSG_START ({gallery_id_input}): Rozpoczynam przetwarzanie. fetch_only_initial_data: {fetch_only_initial_data}")
@@ -380,13 +374,9 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
             gallery_entry_db = db_manager.get_gallery(gallery_id_input)
             current_status = gallery_entry_db.get('status')
             is_ai_pending_or_error = True 
-            reporting.update_current_status(
-                message="Oczekuje na AI (Prod.)...", model=model_name_from_db, gallery=title_for_reporting,
-                gallery_id=gallery_id_input, is_processing=True
-            )
         
         should_collect_links_now = False
-        if needs_ai_title and is_ai_pending_or_error and not links_are_collected_in_memory:
+        if is_ai_pending_or_error and not links_are_collected_in_memory:
             should_collect_links_now = True
             logger.info(f"PSG ({gallery_id_input}): Potrzebny tytuł AI i linki nie są zebrane. Będę zbierać linki.")
         elif not needs_ai_title and not links_are_collected_in_memory and current_status not in ['completed', 'completed_with_tolerance']:
@@ -426,9 +416,11 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
                 logger.info(f"PSG ({gallery_id_input}): Aktualizuję expected_count z {current_expected_db} na {total_images_on_page_from_scan}.")
                 db_manager.update_gallery(gallery_id_input, expected_count=total_images_on_page_from_scan)
                 gallery_entry_db = db_manager.get_gallery(gallery_id_input)
-
+        
+        # --- Jeśli galeria oczekuje na AI, kończymy cykl dla tej galerii. Handle_process_models zajmie się resztą.
         if needs_ai_title and is_ai_pending_or_error:
             logger.info(f"PSG ({gallery_id_input}): Oczekuję na wygenerowanie nazwy przez AI (status: {current_status}). Linki zebrane: {'Tak' if links_are_collected_in_memory else 'Nie'}. Kończę cykl.")
+            reporting.update_current_status("Oczekuje na AI...", model=model_name_from_db, gallery=title_for_reporting, gallery_id=gallery_id_input, is_processing=True)
             return True 
 
         # --- Krok 4: Mamy tytuł od AI, czas na folder i pobieranie ---
@@ -717,19 +709,35 @@ def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None, co
 
 def handle_process_models(start_model_index=0, check_mode="all_or_incomplete", 
                           shutdown_flag_func=None, collected_gallery_image_links_ref=None):
-    models_db = db_manager.execute_query("SELECT model_name FROM models ORDER BY model_name ASC", fetch_all=True)
-    all_model_names = [row['model_name'] for row in models_db] if models_db else []
+    """
+    Główna funkcja orkiestrująca przetwarzanie modeli i ich galerii.
+    
+    Opis modyfikacji:
+    - Wprowadzono dwuetapowe przetwarzanie dla każdego modela.
+    - Etap 1: Skanowanie i zlecanie zadań AI - przechodzi przez galerie, pobiera
+      dane inicjalne i zleca zadania dla AI, ale nie pobiera plików.
+    - Etap 2: Pobieranie gotowych galerii - po zakończeniu etapu 1 dla danego
+      modela, funkcja sprawdza, czy AI zdążyło już wygenerować jakieś nazwy.
+      Jeśli tak, natychmiast rozpoczyna pobieranie tych gotowych galerii.
+      
+    Wpływ na inne funkcje:
+    - Zapewnia bardziej responsywne pobieranie, zgodne z oczekiwaniami.
+    - Współpracuje z nową funkcją `db_manager.get_ready_to_download_galleries_for_model`.
+    """
+    models_db = db_manager.execute_query("SELECT model_id, model_name FROM models ORDER BY model_name ASC", fetch_all=True)
+    all_models = models_db if models_db else []
 
-    if not all_model_names: 
+    if not all_models: 
         logger.info("Brak modelek w DB.")
         current_state = db_manager.get_app_state('script_state') or {}
         current_state["current_operation"] = {"name": None, "params": {}}
         db_manager.update_app_state('script_state', current_state)
         return
     
-    models_to_process = all_model_names
-    if 0 < start_model_index < len(all_model_names): models_to_process = all_model_names[start_model_index:]
-    elif start_model_index >= len(all_model_names) and all_model_names: 
+    models_to_process = all_models
+    all_model_names = [m['model_name'] for m in all_models]
+    if 0 < start_model_index < len(all_models): models_to_process = all_models[start_model_index:]
+    elif start_model_index >= len(all_models) and all_models: 
         logger.info("Wszystkie modelki przetworzone.")
         current_state = db_manager.get_app_state('script_state') or {}
         current_state["last_model_index_processed"] = -1
@@ -746,8 +754,11 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
     try:
         driver = driver_utils.create_driver_with_retry(shutdown_flag_func=shutdown_flag_func)
 
-        for model_idx, model_name in enumerate(models_to_process): 
-            current_global_idx = all_model_names.index(model_name) 
+        for model_data in models_to_process: 
+            model_name = model_data['model_name']
+            model_id_db = model_data['model_id']
+            current_global_idx = all_model_names.index(model_name)
+            
             current_state_loop = db_manager.get_app_state('script_state') or {}
             current_state_loop["last_model_index_processed"] = current_global_idx
             db_manager.update_app_state('script_state', current_state_loop)
@@ -787,15 +798,15 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
             
             if operation_should_stop: break 
 
-            logger.info(f"=== PRZETWARZANIE MODELKI: {model_name} ({current_global_idx + 1}/{len(all_model_names)}) ===")
+            logger.info(f"=== PRZETWARZANIE MODELKI: {model_name} ({current_global_idx + 1}/{len(all_models)}) ===")
             reporting.update_current_status(f"Przetwarzanie ({check_mode})", model=model_name, is_processing=True)
-            model_id_db = db_manager.get_or_create_model(model_name) 
-            if not model_id_db: logger.warning(f"HPM: Nie udało się uzyskać ID dla modelki {model_name}. Pomijam."); continue
             
             model_folder_sanitized = utils.sanitize_foldername(model_name) 
             model_data_dir_path = os.path.join(constants.BASE_DATA_DIR, model_folder_sanitized)
             os.makedirs(model_data_dir_path, exist_ok=True)
 
+            # === Etap 1: Skanowanie i zlecanie zadań AI ===
+            logger.info(f"HPM Etap 1: Skanowanie galerii i zlecanie zadań AI dla '{model_name}'.")
             galleries_exist_for_model = bool(db_manager.execute_query("SELECT 1 FROM galleries WHERE model_id = %s LIMIT 1", (model_id_db,), fetch_one=True))
             if check_mode == "only_new_or_count_changed" or (check_mode == "all_or_incomplete" and not galleries_exist_for_model):
                 try:
@@ -805,7 +816,7 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
                 except Exception as e_scan: logger.error(f"HPM Error: Błąd skanowania {model_name}: {e_scan}", exc_info=True); last_error = e_scan; continue
             
             galleries_for_model_processing = db_manager.get_model_galleries_for_processing(model_id_db, check_mode)
-            logger.info(f"HPM: Znaleziono {len(galleries_for_model_processing)} galerii dla {model_name} w trybie '{check_mode}'.")
+            logger.info(f"HPM: Znaleziono {len(galleries_for_model_processing)} galerii dla {model_name} w trybie '{check_mode}' do skanowania/zlecenia AI.")
             
             for gal_data_item in galleries_for_model_processing:
                 if _is_shutdown_requested_processing(shutdown_flag_func) or db_manager.get_priority_queue(): 
@@ -813,7 +824,7 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
                 
                 try:
                     title_for_log = gal_data_item.get('determined_title') or gal_data_item.get('original_title') or gal_data_item['gallery_id']
-                    logger.info(f"  HPM: Przetwarzanie galerii: {title_for_log} (ID: {gal_data_item['gallery_id']})")
+                    logger.info(f"  HPM (Etap 1): Przetwarzanie inicjalne galerii: {title_for_log}")
                     
                     process_single_gallery(
                         driver, model_name, gal_data_item['url'], gal_data_item['gallery_id'],
@@ -822,25 +833,55 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
                         shutdown_flag_func=shutdown_flag_func,
                         collected_gallery_image_links_ref=collected_gallery_image_links_ref
                     )
-                    galleries_processed_since_vpn += 1
-                    if galleries_processed_since_vpn >= vpn_threshold:
-                        current_state_vpn = db_manager.get_app_state('script_state') or {}
-                        current_state_vpn["last_model_index_processed"] = current_global_idx
-                        db_manager.update_app_state('script_state', current_state_vpn)
-                        raise constants.RestartRequiredError("Osiągnięto próg rotacji VPN")
                 except constants.RestartRequiredError: raise 
                 except Exception as e_gal: 
-                    logger.exception(f"HPM Error: Błąd podczas przetwarzania galerii ID {gal_data_item['gallery_id']}: {e_gal}")
+                    logger.exception(f"HPM Error (Etap 1): Błąd podczas przetwarzania galerii ID {gal_data_item['gallery_id']}: {e_gal}")
                     last_error = e_gal 
                 
-                if _is_shutdown_requested_processing(shutdown_flag_func): break 
+                if _is_shutdown_requested_processing(shutdown_flag_func): break
             
+            if operation_should_stop: break
+
+            # === Etap 2: Pobieranie gotowych galerii dla tego samego modelu ===
+            logger.info(f"HPM Etap 2: Sprawdzanie gotowych do pobrania galerii dla '{model_name}'.")
+            time.sleep(5) # Daj chwilę workerowi AI na przetworzenie zleconych zadań
+            
+            galleries_to_download = db_manager.get_ready_to_download_galleries_for_model(model_id_db)
+            if galleries_to_download:
+                logger.info(f"HPM (Etap 2): Znaleziono {len(galleries_to_download)} gotowych galerii dla '{model_name}'. Rozpoczynam pobieranie.")
+                for gal_to_download in galleries_to_download:
+                    if _is_shutdown_requested_processing(shutdown_flag_func) or db_manager.get_priority_queue():
+                        operation_should_stop = True; break
+                    
+                    try:
+                        title_for_log = gal_to_download.get('determined_title') or gal_to_download.get('original_title') or gal_to_download['gallery_id']
+                        logger.info(f"  HPM (Etap 2): Pobieranie gotowej galerii: {title_for_log}")
+                        process_single_gallery(
+                            driver, model_name, gal_to_download['url'], gal_to_download['gallery_id'],
+                            shutdown_flag_func=shutdown_flag_func,
+                            collected_gallery_image_links_ref=collected_gallery_image_links_ref
+                        )
+                        galleries_processed_since_vpn += 1
+                        if galleries_processed_since_vpn >= vpn_threshold:
+                            current_state_vpn = db_manager.get_app_state('script_state') or {}
+                            current_state_vpn["last_model_index_processed"] = current_global_idx
+                            db_manager.update_app_state('script_state', current_state_vpn)
+                            raise constants.RestartRequiredError("Osiągnięto próg rotacji VPN")
+                    except constants.RestartRequiredError: raise
+                    except Exception as e_gal_dl:
+                        logger.exception(f"HPM Error (Etap 2): Błąd pobierania galerii ID {gal_to_download['gallery_id']}: {e_gal_dl}")
+                        last_error = e_gal_dl
+            else:
+                logger.info(f"HPM (Etap 2): Brak gotowych galerii do pobrania dla '{model_name}'.")
+
             if operation_should_stop: 
                 current_state_stop = db_manager.get_app_state('script_state') or {}
                 current_state_stop["last_model_index_processed"] = current_global_idx
                 db_manager.update_app_state('script_state', current_state_stop)
-                break 
-            logger.info(f"--- HPM: Zakończono model: {model_name} ---"); reporting.update_current_status(f"Zakończono model {model_name}", model=model_name, is_processing=False)
+                break
+            
+            logger.info(f"--- HPM: Zakończono model: {model_name} ---");
+            reporting.update_current_status(f"Zakończono model {model_name}", model=model_name, is_processing=False)
         
         if not _is_shutdown_requested_processing(shutdown_flag_func) and not operation_should_stop:
             logger.info(f"🎉 HPM: ZAKOŃCZONO WSZYSTKIE MODELKI ({check_mode}) 🎉")
