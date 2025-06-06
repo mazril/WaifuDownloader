@@ -74,6 +74,14 @@ def _create_driver_instance_for_thread(q_result, adblock_path_local):
         _ = driver.current_url 
         logger.info("Przeglądarka responsywna.")
 
+        # --- NOWA, JAWNA MAKSYMALIZACJA OKNA ---
+        try:
+            logger.info("Maksymalizacja okna przeglądarki...")
+            driver.maximize_window()
+        except Exception as e_max:
+            logger.warning(f"Nie udało się jawnie zmaksymalizować okna: {e_max}")
+        # --- KONIEC NOWEJ LOGIKI ---
+
         if adblock_loaded_successfully:
             logger.info("Czekam na załadowanie AdBlocka (5s)...")
             time.sleep(5)
@@ -229,17 +237,6 @@ def check_and_handle_block(driver, url_being_loaded="bieżący URL"):
         raise constants.RestartRequiredError(f"Wykryto blokadę (CAPTCHA/Cloudflare) na {url_being_loaded}.")
 
 def safe_driver_get(driver, url, shutdown_flag_func=None):
-    """
-    Nawiguje do podanego URL i ustawia poziom zoomu na 25%.
-    
-    Opis modyfikacji:
-    - Dodano wykonanie skryptu JavaScript `document.body.style.zoom='25%'`,
-      który zmniejsza widok strony, co może przyspieszyć jej renderowanie.
-    
-    Wpływ na inne funkcje:
-    - Każde załadowanie strony przez tę funkcję będzie teraz skutkowało
-      zmniejszonym widokiem.
-    """
     if shutdown_flag_func and shutdown_flag_func():
         logger.info(f"safe_driver_get: Wykryto żądanie zamknięcia przed przejściem do {url}.")
         raise constants.RestartRequiredError("Przerwano ładowanie strony przez żądanie zamknięcia.", no_vpn=True)
@@ -248,7 +245,6 @@ def safe_driver_get(driver, url, shutdown_flag_func=None):
     try:
         driver.get(url)
         
-        # Nowy kod do ustawiania zoomu
         try:
             driver.execute_script("document.body.style.zoom='25%'")
             logger.info("Ustawiono zoom strony na 25%.")
@@ -296,18 +292,6 @@ def _is_element_in_viewport(driver, element, shutdown_flag_func=None):
 def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=True,
                          gallery_id=None, model_name=None, gallery_title=None,
                          shutdown_flag_func=None):
-    """
-    Przewija stronę, aż przestaną pojawiać się nowe elementy lub upłynie czas.
-    
-    Opis modyfikacji:
-    - Dodano logikę sprawdzającą pozycję spinnera względem sekcji "YOU MAY ALSO LIKE".
-    - Jeśli spinner pojawi się poniżej tej sekcji, skrypt wykonuje korektę przewijając
-      stronę w górę, zamiast bezproduktywnie czekać.
-      
-    Wpływ na inne funkcje:
-    - Zwiększa niezawodność przewijania, obsługując rzadki przypadek, gdy skrypt
-      przewinie stronę za daleko i aktywuje spinner w niepożądanym miejscu.
-    """
     config_handler.load_config()
     cfg = config_handler.current_config['scrolling']
     logger.info(f"SUT: Start dla '{selector}'. Oczekiwane: {expected_count or 'brak'}. Tytuł: '{gallery_title or 'N/A'}'")
@@ -350,19 +334,17 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
             spinner = driver.find_element(By.ID, "loading-spinner")
             if spinner and spinner.is_displayed() and _is_element_in_viewport(driver, spinner, shutdown_flag_func=shutdown_flag_func):
                 
-                # --- NOWA LOGIKA KOREKTY DLA SPINNERA PONIŻEJ YMAL ---
                 try:
                     ymal_header = driver.find_element(By.XPATH, "//h1[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'you may also like:')]")
                     if ymal_header and spinner.location['y'] > ymal_header.location['y']:
                         logger.warning("SUT: 🍥 Wykryto spinner PONIŻEJ 'YOU MAY ALSO LIKE'. Wykonuję korektę w górę.")
                         driver.execute_script(f"window.scrollBy(0, -{effective_jump * 2});")
                         last_new_time = time.time()
-                        continue # Pomiń standardowe czekanie, przejdź do następnej iteracji
+                        continue
                 except NoSuchElementException:
-                    pass # Brak YMAL, kontynuuj normalne czekanie na spinner
+                    pass
                 except Exception as e_ymal_spinner:
                     logger.warning(f"SUT: Błąd podczas sprawdzania pozycji spinnera vs YMAL: {e_ymal_spinner}")
-                # --- KONIEC NOWEJ LOGIKI ---
 
                 logger.info(f"SUT: 🍥 Wykryto WIDOCZNY spinner. Czekam do {spinner_wait}s...")
                 spinner_start_time = time.monotonic()
