@@ -1,7 +1,7 @@
 {
     "scrolling": {
         "wait_for_new": {
-            "value": 15.0,
+            "value": 10.0,
             "description": "Maksymalny czas (w sekundach), przez który skrypt będzie czekał na pojawienie się nowych elementów na stronie podczas przewijania, zanim podejmie próbę odświeżenia pozycji."
         },
         "pause_between_min": {
