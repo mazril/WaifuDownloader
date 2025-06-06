@@ -18,10 +18,6 @@ import services
 import driver_utils
 import db_manager # Dodano import
 
-# --- Globalny słownik do przechowywania zebranych linków do obrazów ---
-# Klucz: gallery_id, Wartość: lista URL-i obrazów
-collected_gallery_image_links = {}
-
 # --- Konfiguracja loggingu ---
 def setup_logging():
     log_formatter = logging.Formatter('%(asctime)s [%(levelname)-8s] [%(name)-20s:%(lineno)4d] %(message)s')
@@ -93,22 +89,11 @@ def final_cleanup():
     logging.shutdown()
 
 def main_menu():
-    """
-    Wyświetla menu główne i zwraca wybraną operację.
-    
-    Opis modyfikacji:
-    Menu zostało uproszczone. Główna opcja "Uruchom pełny cykl" teraz obejmuje
-    przetwarzanie nowych galerii, a następnie automatyczne przejście do
-    uzupełniania niekompletnych. To odzwierciedla nową, dwuetapową logikę przetwarzania.
-    
-    Wpływ na inne funkcje:
-    - Wybór opcji '1' inicjuje nową, dwuetapową logikę w `main_loop`.
-    """
     print("\n" + "=" * 50)
     print(" " * 19 + "MENU GŁÓWNE")
     print("=" * 50)
     print(" ℹ️  Strona statusu PHP jest dostępna pod adresem: ")
-    print("     http://localhost/TWOJA_SCIEZKA_DO_PROJEKTU/status.php ")
+    print("     http://localhost/TWOJA_SCIEZKA_DO_PROJEKTU/index.php ")
     print("     (Dostosuj URL do konfiguracji swojego serwera WWW)")
     print("-" * 50)
     print(" 1. Uruchom pełny cykl (Nowe galerie, potem uzupełnianie)")
@@ -135,18 +120,11 @@ def main_loop():
     Główna pętla programu zarządzająca operacjami.
     
     Opis modyfikacji:
-    Logika została rozbudowana, aby obsłużyć dwuetapowe przetwarzanie.
-    Po wybraniu opcji "Uruchom pełny cykl", pętla najpierw wykonuje przetwarzanie
-    podstawowe (`check_mode="all_or_incomplete"`), a po jego zakończeniu
-    automatycznie rozpoczyna etap uzupełniania niekompletnych galerii
-    (`check_mode="fill_incomplete_only"`).
-    
-    Wpływ na inne funkcje:
-    - Wywołuje `processing.handle_process_models` z nowym `check_mode`.
-    - Współpracuje ze zmienionym `main_menu` i logiką w `db_manager`.
+    - Usunięto globalny słownik `collected_gallery_image_links`, ponieważ
+      linki są teraz zapisywane w bazie danych.
+    - Odwołania do tego słownika zostały usunięte z wywołań funkcji.
     """
     global shutdown_requested
-    global collected_gallery_image_links
 
     try:
         config_handler.load_config(force_reload=True)
@@ -199,8 +177,7 @@ def main_loop():
                     try:
                         processing.handle_priority_item(
                             item,
-                            shutdown_flag_func=lambda: shutdown_requested,
-                            collected_gallery_image_links_ref=collected_gallery_image_links
+                            shutdown_flag_func=lambda: shutdown_requested
                         )
                     except constants.RestartRequiredError as rre_priority:
                         logger.error(f"ML: RESTART WYMAGANY w zadaniu priorytetowym: {rre_priority}", exc_info=False)
@@ -249,7 +226,6 @@ def main_loop():
                     operation_completed_normally = False
                     try:
                         if active_op_name == "full_run":
-                            # Etap 1: Przetwarzanie nowych i błędnych
                             state = db_manager.get_app_state('script_state') or {"last_model_index_processed": -1}
                             start_idx = state.get("last_model_index_processed", -1) + 1
                             
@@ -257,22 +233,19 @@ def main_loop():
                             processing.handle_process_models(
                                 start_model_index=start_idx,
                                 check_mode="all_or_incomplete",
-                                shutdown_flag_func=lambda: shutdown_requested,
-                                collected_gallery_image_links_ref=collected_gallery_image_links
+                                shutdown_flag_func=lambda: shutdown_requested
                             )
-                            # Po zakończeniu etapu 1, płynnie przejdź do etapu 2
                             active_op_name = "full_run_fill_incomplete"
-                            active_op_params = {} # Resetuj parametry dla nowego etapu
+                            active_op_params = {}
                             current_state = db_manager.get_app_state('script_state') or {}
                             current_state["current_operation"]["name"] = active_op_name
                             current_state["current_operation"]["params"] = active_op_params
-                            current_state["last_model_index_processed"] = -1 # Zacznij od początku dla uzupełniania
+                            current_state["last_model_index_processed"] = -1
                             db_manager.update_app_state('script_state', current_state)
                             logger.info("ML: Zakończono etap 1 (Nowe). Rozpoczynam etap 2 (Uzupełnianie).")
-                            continue # Przejdź do następnej iteracji pętli, aby rozpocząć etap 2
+                            continue
 
                         elif active_op_name == "full_run_fill_incomplete":
-                            # Etap 2: Uzupełnianie niekompletnych
                             state = db_manager.get_app_state('script_state') or {"last_model_index_processed": -1}
                             start_idx = state.get("last_model_index_processed", -1) + 1
                             
@@ -280,23 +253,14 @@ def main_loop():
                             processing.handle_process_models(
                                 start_model_index=start_idx,
                                 check_mode="fill_incomplete_only",
-                                shutdown_flag_func=lambda: shutdown_requested,
-                                collected_gallery_image_links_ref=collected_gallery_image_links
+                                shutdown_flag_func=lambda: shutdown_requested
                             )
                             operation_completed_normally = True
 
                         elif active_op_name == "process_models":
                             processing.handle_process_models(
                                 **active_op_params,
-                                shutdown_flag_func=lambda: shutdown_requested,
-                                collected_gallery_image_links_ref=collected_gallery_image_links
-                            )
-                            operation_completed_normally = True
-
-                        elif active_op_name == "fill_incomplete":
-                            processing.handle_fill_incomplete(
-                                shutdown_flag_func=lambda: shutdown_requested,
-                                collected_gallery_image_links_ref=collected_gallery_image_links
+                                shutdown_flag_func=lambda: shutdown_requested
                             )
                             operation_completed_normally = True
 
