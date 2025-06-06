@@ -37,7 +37,7 @@
             "description": "Maksymalna liczba prób odświeżenia pozycji przewijania na jednej stronie, zanim skrypt uzna, że załadowano wszystkie elementy."
         },
         "MAX_YMAL_CONSECUTIVE_CORRECTIONS": {
-            "value": 4,
+            "value": 2,
             "description": "Maksymalna liczba kolejnych korekt pozycji przewijania w górę, gdy skrypt wykryje sekcję 'YOU MAY ALSO LIKE' w widocznym obszarze."
         }
     },
