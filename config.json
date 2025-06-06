@@ -17,7 +17,7 @@
             "description": "Dystans (w pikselach), o jaki strona jest przewijana w jednym 'skoku'. Większa wartość może przyspieszyć przewijanie, ale może też pominąć elementy."
         },
         "spinner_wait_time": {
-            "value": 15.0,
+            "value": 10.0,
             "description": "Maksymalny czas (w sekundach), przez który skrypt będzie czekał, jeśli na stronie pojawi się widoczny wskaźnik ładowania (spinner)."
         },
         "refresh_jumps_main": {
@@ -25,7 +25,7 @@
             "description": "Liczba skoków 'góra/dół' wykonywanych podczas odświeżania pozycji na głównej stronie modelki, gdy skrypt uzna, że nic nowego się nie ładuje."
         },
         "gallery_up_jumps": {
-            "value": 5,
+            "value": 6,
             "description": "Liczba skoków w górę podczas próby odświeżenia pozycji na stronie galerii (gdy wykryto sekcję 'YOU MAY ALSO LIKE')."
         },
         "gallery_down_jumps": {
