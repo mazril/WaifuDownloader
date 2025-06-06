@@ -1,0 +1,122 @@
+{
+    "scrolling": {
+        "wait_for_new": {
+            "value": 20,
+            "description": "Czas (s) oczekiwania na nowe elementy podczas przewijania."
+        },
+        "pause_between_min": {
+            "value": 0.1,
+            "description": "Minimalna pauza (s) pomi\u0119dzy kolejnymi 'skokami' przewijania."
+        },
+        "pause_between_max": {
+            "value": 0.3,
+            "description": "Maksymalna pauza (s) pomi\u0119dzy kolejnymi 'skokami' przewijania."
+        },
+        "jump_distance": {
+            "value": 220,
+            "description": "Odleg\u0142o\u015b\u0107 przewijania (px)."
+        },
+        "spinner_wait_time": {
+            "value": 6,
+            "description": "Max. czas (s) oczekiwania, gdy widoczny jest spinner \u0142adowania."
+        },
+        "refresh_jumps_main": {
+            "value": 3,
+            "description": "Skoki g\u00f3ra/d\u00f3\u0142 przy od\u015bwie\u017caniu na stronie modelu."
+        },
+        "gallery_up_jumps": {
+            "value": 5,
+            "description": "Skoki w g\u00f3r\u0119 przy od\u015bwie\u017caniu w galerii."
+        },
+        "gallery_down_jumps": {
+            "value": 3,
+            "description": "Skoki w d\u00f3\u0142 przy od\u015bwie\u017caniu w galerii."
+        },
+        "max_refresh": {
+            "value": 1,
+            "description": "Max. pr\u00f3b od\u015bwie\u017cenia przewijania."
+        },
+        "MAX_YMAL_CONSECUTIVE_CORRECTIONS": {
+            "value": 4,
+            "description": "Max. korekt dla sekcji 'YOU MAY ALSO LIKE:'."
+        }
+    },
+    "downloading": {
+        "download_delay_min": {
+            "value": 0.8,
+            "description": "Min. czas (s) oczekiwania przed pobraniem obrazka."
+        },
+        "download_delay_max": {
+            "value": 1.3,
+            "description": "Max. czas (s) oczekiwania przed pobraniem obrazka."
+        },
+        "incomplete_gallery_completion_tolerance": {
+            "value": 5,
+            "description": "Maksymalna liczba brakuj\u0105cych obraz\u00f3w, przy kt\u00f3rej galeria jest nadal uznawana za 'uko\u0144czon\u0105 z tolerancj\u0105'."
+        }
+    },
+    "pauses_and_rotation": {
+        "gallery_pause": {
+            "value": 5,
+            "description": "Pauza (s) po pobraniu ca\u0142ej galerii."
+        },
+        "GALLERY_PAUSE_THRESHOLD_MIN": {
+            "value": 25,
+            "description": "Min. liczba galerii do rotacji IP."
+        },
+        "GALLERY_PAUSE_THRESHOLD_MAX": {
+            "value": 35,
+            "description": "Max. liczba galerii do rotacji IP."
+        }
+    },
+    "http_server": {
+        "bind_host": {
+            "value": "0.0.0.0",
+            "description": "Adres IP, na kt\u00f3rym serwer nas\u0142uchuje ('0.0.0.0' = wszystkie, '127.0.0.1' = lokalnie, lub konkretne IP np. '192.168.70.90')."
+        },
+        "port": {
+            "value": 8123,
+            "description": "Port serwera HTTP."
+        },
+        "status_page_host": {
+            "value": "192.168.70.90",
+            "description": "Adres IP/host u\u017cywany przez status.html do po\u0142\u0105cze\u0144 fetch (u\u017cyj IP serwera dla dost\u0119pu z sieci, lub 'localhost' dla dost\u0119pu lokalnego)."
+        }
+    },
+    "database": {
+        "host": {
+            "value": "localhost",
+            "description": "Host bazy danych MySQL."
+        },
+        "user": {
+            "value": "waifudownloader",
+            "description": "U\u017cytkownik bazy danych."
+        },
+        "password": {
+            "value": "vfdsc34Ffgaa307",
+            "description": "Has\u0142o do bazy danych."
+        },
+        "database": {
+            "value": "waifudownloader",
+            "description": "Nazwa bazy danych."
+        },
+        "port": {
+            "value": 3306,
+            "description": "Port bazy danych (zazwyczaj 3306)."
+        },
+        "pool_size": {
+            "value": 5,
+            "description": "Rozmiar puli po\u0142\u0105cze\u0144 dla Pythona."
+        }
+    },
+    "ai_settings": {
+        "api_base_url": {
+            "value": "http://192.168.3.4:11434/",
+            "description": "G\u0142\u00f3wny adres URL serwera Ollama."
+        },
+        "default_model_name": {
+            "value": "llama3:latest",
+            "description": "Domy\u015blny model Ollama u\u017cywany, gdy nie jest zdefiniowany w prompcie."
+        }
+    }
+}

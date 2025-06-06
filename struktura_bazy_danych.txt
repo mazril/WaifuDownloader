@@ -1,0 +1,132 @@
+-- MariaDB dump 10.19  Distrib 10.4.32-MariaDB, for Win64 (AMD64)
+--
+-- Host: localhost    Database: waifudownloader
+-- ------------------------------------------------------
+-- Server version	10.4.32-MariaDB
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+--
+-- Table structure for table `ai_prompt_configs`
+--
+
+DROP TABLE IF EXISTS `ai_prompt_configs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `ai_prompt_configs` (
+  `config_id` varchar(50) NOT NULL,
+  `system_prompt` text NOT NULL,
+  `ollama_model_name` varchar(100) DEFAULT NULL,
+  `ollama_temperature` float DEFAULT 0.2,
+  `ollama_num_predict` int(11) DEFAULT 60,
+  `ollama_top_p` float DEFAULT 0.8,
+  `description` varchar(255) DEFAULT NULL,
+  `last_updated` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`config_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `app_state`
+--
+
+DROP TABLE IF EXISTS `app_state`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `app_state` (
+  `key_name` varchar(100) NOT NULL,
+  `value_text` text DEFAULT NULL,
+  `value_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`value_json`)),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`key_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `galleries`
+--
+
+DROP TABLE IF EXISTS `galleries`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `galleries` (
+  `gallery_id` varchar(50) NOT NULL COMMENT 'ID galerii ze strony (np. 97402)',
+  `model_id` int(11) NOT NULL,
+  `url` varchar(512) NOT NULL,
+  `original_title` varchar(512) DEFAULT NULL,
+  `source_page_title` varchar(512) DEFAULT NULL COMMENT 'Tytuł pobrany bezpośrednio ze strony galerii (z <title>, H1 lub skryptów)',
+  `gallery_description` text DEFAULT NULL,
+  `determined_title` varchar(512) DEFAULT NULL,
+  `test_ai_title` varchar(512) DEFAULT NULL COMMENT 'Przechowuje tytuł wygenerowany przez konfigurację testową AI',
+  `folder_path` varchar(1024) DEFAULT NULL,
+  `expected_count` int(11) DEFAULT NULL,
+  `downloaded_count` int(11) DEFAULT 0,
+  `status` enum('pending_check','partially_downloaded','completed','completed_with_tolerance','error','downloaded_unknown_total','pending_production_ai','pending_test_ai','error_ai_prod','error_ai_test','test_completed','pending_initial_fetch_prod_ai','pending_initial_fetch_test_ai') DEFAULT 'pending_check',
+  `last_processed_timestamp` datetime DEFAULT NULL,
+  `error_message` text DEFAULT NULL,
+  `tags_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Przechowuje tagi cosplay i fandom jako obiekt JSON' CHECK (json_valid(`tags_json`)),
+  `initial_data_fetched` tinyint(1) NOT NULL DEFAULT 0 COMMENT 'Czy podstawowe dane (tytuł ze strony, tagi) zostały już pobrane i AI uruchomione przynajmniej raz',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `last_checked` datetime DEFAULT NULL,
+  PRIMARY KEY (`gallery_id`),
+  UNIQUE KEY `url` (`url`),
+  KEY `model_id` (`model_id`),
+  CONSTRAINT `galleries_ibfk_1` FOREIGN KEY (`model_id`) REFERENCES `models` (`model_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `models`
+--
+
+DROP TABLE IF EXISTS `models`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `models` (
+  `model_id` int(11) NOT NULL AUTO_INCREMENT,
+  `model_name` varchar(255) NOT NULL,
+  `sanitized_name` varchar(255) NOT NULL COMMENT 'Nazwa używana w URL i ścieżkach',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`model_id`),
+  UNIQUE KEY `model_name` (`model_name`),
+  UNIQUE KEY `sanitized_name` (`sanitized_name`)
+) ENGINE=InnoDB AUTO_INCREMENT=111 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `priority_queue`
+--
+
+DROP TABLE IF EXISTS `priority_queue`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE `priority_queue` (
+  `queue_id` int(11) NOT NULL AUTO_INCREMENT,
+  `item_type` varchar(50) NOT NULL,
+  `item_data` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT 'Przechowuje dane jako JSON (ID galerii, nazwa modelu itp.)' CHECK (json_valid(`item_data`)),
+  `priority` int(11) DEFAULT 100 COMMENT 'Niższa wartość = wyższy priorytet',
+  `added_timestamp` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`queue_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=197 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+-- Dump completed on 2025-06-06 12:33:35
