@@ -229,6 +229,17 @@ def check_and_handle_block(driver, url_being_loaded="bieżący URL"):
         raise constants.RestartRequiredError(f"Wykryto blokadę (CAPTCHA/Cloudflare) na {url_being_loaded}.")
 
 def safe_driver_get(driver, url, shutdown_flag_func=None):
+    """
+    Nawiguje do podanego URL i ustawia poziom zoomu na 25%.
+    
+    Opis modyfikacji:
+    - Dodano wykonanie skryptu JavaScript `document.body.style.zoom='25%'`,
+      który zmniejsza widok strony, co może przyspieszyć jej renderowanie.
+    
+    Wpływ na inne funkcje:
+    - Każde załadowanie strony przez tę funkcję będzie teraz skutkowało
+      zmniejszonym widokiem.
+    """
     if shutdown_flag_func and shutdown_flag_func():
         logger.info(f"safe_driver_get: Wykryto żądanie zamknięcia przed przejściem do {url}.")
         raise constants.RestartRequiredError("Przerwano ładowanie strony przez żądanie zamknięcia.", no_vpn=True)
@@ -236,6 +247,14 @@ def safe_driver_get(driver, url, shutdown_flag_func=None):
     logger.info(f"Przechodzę do: {url}")
     try:
         driver.get(url)
+        
+        # Nowy kod do ustawiania zoomu
+        try:
+            driver.execute_script("document.body.style.zoom='25%'")
+            logger.info("Ustawiono zoom strony na 25%.")
+        except Exception as e_zoom:
+            logger.warning(f"Nie udało się ustawić zoomu strony: {e_zoom}")
+
         pause_start_time = time.monotonic()
         target_pause = random.uniform(3.5, 6.0)
         while time.monotonic() - pause_start_time < target_pause:
@@ -276,9 +295,19 @@ def _is_element_in_viewport(driver, element, shutdown_flag_func=None):
 
 def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=True,
                          gallery_id=None, model_name=None, gallery_title=None,
-                         initial_downloaded_count=0,
-                         current_expected_count_for_reporting=None,
-                         shutdown_flag_func=None): 
+                         shutdown_flag_func=None):
+    """
+    Przewija stronę, aż przestaną pojawiać się nowe elementy lub upłynie czas.
+    
+    Opis modyfikacji:
+    - Dodano logikę sprawdzającą pozycję spinnera względem sekcji "YOU MAY ALSO LIKE".
+    - Jeśli spinner pojawi się poniżej tej sekcji, skrypt wykonuje korektę przewijając
+      stronę w górę, zamiast bezproduktywnie czekać.
+      
+    Wpływ na inne funkcje:
+    - Zwiększa niezawodność przewijania, obsługując rzadki przypadek, gdy skrypt
+      przewinie stronę za daleko i aktywuje spinner w niepożądanym miejscu.
+    """
     config_handler.load_config()
     cfg = config_handler.current_config['scrolling']
     logger.info(f"SUT: Start dla '{selector}'. Oczekiwane: {expected_count or 'brak'}. Tytuł: '{gallery_title or 'N/A'}'")
@@ -296,13 +325,12 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
     if gallery_id:
         reporting.update_current_status(
             message=f"Szukanie... ({last_count_on_page})", model=model_name, gallery=gallery_title,
-            gallery_id=gallery_id, is_processing=True, scan_session_found_count=last_count_on_page,
-            downloaded_count=initial_downloaded_count, expected_count=current_expected_count_for_reporting
+            gallery_id=gallery_id, is_processing=True, scan_session_found_count=last_count_on_page
         )
 
     while True:
         if shutdown_flag_func and shutdown_flag_func(): 
-            logger.info("SUT: Żądanie zamknięcia (przez shutdown_flag_func). Przerywam scroll_until_timeout."); break
+            logger.info("SUT: Żądanie zamknięcia. Przerywam scroll_until_timeout."); break
 
         if config_handler.load_config(): logger.info("SUT: Konfiguracja przeładowana.")
         cfg = config_handler.current_config['scrolling']
@@ -321,16 +349,29 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
             if shutdown_flag_func and shutdown_flag_func(): break
             spinner = driver.find_element(By.ID, "loading-spinner")
             if spinner and spinner.is_displayed() and _is_element_in_viewport(driver, spinner, shutdown_flag_func=shutdown_flag_func):
+                
+                # --- NOWA LOGIKA KOREKTY DLA SPINNERA PONIŻEJ YMAL ---
+                try:
+                    ymal_header = driver.find_element(By.XPATH, "//h1[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'you may also like:')]")
+                    if ymal_header and spinner.location['y'] > ymal_header.location['y']:
+                        logger.warning("SUT: 🍥 Wykryto spinner PONIŻEJ 'YOU MAY ALSO LIKE'. Wykonuję korektę w górę.")
+                        driver.execute_script(f"window.scrollBy(0, -{effective_jump * 2});")
+                        last_new_time = time.time()
+                        continue # Pomiń standardowe czekanie, przejdź do następnej iteracji
+                except NoSuchElementException:
+                    pass # Brak YMAL, kontynuuj normalne czekanie na spinner
+                except Exception as e_ymal_spinner:
+                    logger.warning(f"SUT: Błąd podczas sprawdzania pozycji spinnera vs YMAL: {e_ymal_spinner}")
+                # --- KONIEC NOWEJ LOGIKI ---
+
                 logger.info(f"SUT: 🍥 Wykryto WIDOCZNY spinner. Czekam do {spinner_wait}s...")
                 spinner_start_time = time.monotonic()
                 while time.monotonic() - spinner_start_time < spinner_wait:
                     if shutdown_flag_func and shutdown_flag_func(): break
                     time.sleep(0.5)
                     try:
-                        if shutdown_flag_func and shutdown_flag_func(): break
-                        spinner_now = driver.find_element(By.ID, "loading-spinner")
-                        if not spinner_now.is_displayed() or not _is_element_in_viewport(driver, spinner_now, shutdown_flag_func=shutdown_flag_func):
-                            logger.info("SUT:   🍥 Spinner zniknął lub jest poza ekranem. Kontynuuję."); last_new_time = time.time(); break
+                        if not driver.find_element(By.ID, "loading-spinner").is_displayed():
+                            logger.info("SUT:   🍥 Spinner zniknął. Kontynuuję."); last_new_time = time.time(); break
                     except NoSuchElementException: logger.info("SUT:   🍥 Spinner zniknął (NSE). Kontynuuję."); last_new_time = time.time(); break
                 else: 
                     if not (shutdown_flag_func and shutdown_flag_func()):
@@ -385,7 +426,7 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
             logger.info(f"SUT: ➕ Znaleziono {current_found - last_count_on_page} nowych (łącznie: {current_found}).")
             last_count_on_page = current_found; last_new_time = time.time(); elems = current_elems_list
             ymal_consecutive_detections = 0 
-            if gallery_id: reporting.update_current_status(message=f"Szukanie... ({current_found})", model=model_name, gallery=gallery_title, gallery_id=gallery_id, is_processing=True, scan_session_found_count=current_found, downloaded_count=initial_downloaded_count, expected_count=current_expected_count_for_reporting)
+            if gallery_id: reporting.update_current_status(message=f"Szukanie... ({current_found})", model=model_name, gallery=gallery_title, gallery_id=gallery_id, is_processing=True, scan_session_found_count=current_found)
 
         elapsed = time.time() - last_new_time
         logger.debug(f"SUT: ⏳ Czas bez nowości: {elapsed:.1f}s (limit: {wait_for_new}s). Znaleziono: {current_found}/{expected_count or '?'}.")
