@@ -19,14 +19,12 @@ def get_default_config():
     Zwraca domyślną strukturę konfiguracji.
     
     Opis modyfikacji:
-    - Zmieniono nazwę klucza `incomplete_gallery_completion_tolerance` na
-      `completion_tolerance_percent` w sekcji `downloading`.
-    - Zaktualizowano domyślną wartość na 95.0 i opis, aby odzwierciedlał,
-      że jest to próg procentowy.
+    - Dodano klucz `max_consecutive_download_errors` w sekcji `downloading`
+      z domyślną wartością 5.
       
     Wpływ na inne funkcje:
-    - Ta zmiana wymaga aktualizacji logiki w `processing.py`, która odczytuje
-      tę wartość do ustalania statusu `completed_with_tolerance`.
+    - Umożliwia odczyt nowego parametru w `data_manager.py` do kontroli
+      wyłączania galerii z błędami.
     """
     return {
         "scrolling": {
@@ -44,7 +42,8 @@ def get_default_config():
         "downloading": {
             "download_delay_min": {"value": 0.8, "description": "Min. czas (s) oczekiwania przed pobraniem obrazka."},
             "download_delay_max": {"value": 1.6, "description": "Max. czas (s) oczekiwania przed pobraniem obrazka."},
-            "completion_tolerance_percent": {"value": 95.0, "description": "Procent pobranych plików (np. 95), przy którym galeria jest uznawana za 'ukończoną z tolerancją'."}
+            "completion_tolerance_percent": {"value": 95.0, "description": "Procent pobranych plików (np. 95), przy którym galeria jest uznawana za 'ukończoną z tolerancją'."},
+            "max_consecutive_download_errors": {"value": 5, "description": "Max. błędów pobierania w pustej galerii, by ją wyłączyć."}
         },
         "pauses_and_rotation": {
             "gallery_pause": {"value": 5.0, "description": "Pauza (s) po pobraniu całej galerii."},
