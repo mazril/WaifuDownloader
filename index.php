@@ -1116,31 +1116,53 @@ if ($pdo) {
             showGlobalToast(`Błąd sieciowy (Test AI Single): ${error.message}`, true);
         });
     }
-    function saveProdTitleAndRenameSingle(galleryId) { 
+    function saveProdTitleAndRenameSingle(galleryId) {
         const galleryIdSafe = sanitizeForIdTestAi(galleryId);
         const row = document.getElementById(`row-test-ai-${galleryIdSafe}`);
-        if (!row) return; 
-        const input = row.querySelector('.prod-title-input-test-ai');
-        const newTitle = input.value.trim();
+        if (!row) return;
+
+        const prodTitleInput = row.querySelector('.prod-title-input-test-ai');
+        const testTitleInput = row.querySelector('.test-title-input-test-ai');
         const btn = row.querySelector('.rename-btn-single');
-        if (!newTitle) { showGlobalToast('Tytuł produkcyjny nie może być pusty.', true); return; }
+
+        const testTitle = testTitleInput.value.trim();
+        if (!testTitle) {
+            showGlobalToast('Tytuł testowy jest pusty. Nie można wykonać akcji.', true);
+            return;
+        }
+
+        // Krok 1: Kopiowanie wartości
+        prodTitleInput.value = testTitle;
+        prodTitleInput.classList.add('changed'); // Oznacz jako zmienione
+        
         if(btn) {btn.disabled = true; btn.textContent = 'Zmieniam...';}
-        fetch(`${API_URL_INDEX}?action=rename_gallery_folder`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gallery_id: galleryId, new_title: newTitle }) })
+
+        fetch(`${API_URL_INDEX}?action=rename_gallery_folder`, { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ gallery_id: galleryId, new_title: testTitle }) 
+        })
         .then(res => res.json())
         .then(data => {
             if(btn) {btn.disabled = false; btn.textContent = 'Zapisz i Zmień';}
             if (data.success) {
                 showGlobalToast(`Zapis i zmiana nazwy dla ${galleryId}: ${data.message}`);
-                input.dataset.originalValue = newTitle;
-                input.classList.remove('changed');
-                if (currentGalleriesDataTestAi[galleryId]) currentGalleriesDataTestAi[galleryId].determined_title = newTitle; 
+                prodTitleInput.dataset.originalValue = testTitle;
+                prodTitleInput.classList.remove('changed');
+                if (currentGalleriesDataTestAi[galleryId]) {
+                    currentGalleriesDataTestAi[galleryId].determined_title = testTitle;
+                }
             } else {
                 showGlobalToast(`Błąd zapisu/zmiany nazwy ${galleryId}: ${data.message}`, true);
+                prodTitleInput.value = prodTitleInput.dataset.originalValue; // Przywróć starą wartość w razie błędu
+                prodTitleInput.classList.remove('changed');
             }
         })
         .catch(error => {
             if(btn) { btn.disabled = false; btn.textContent = 'Zapisz i Zmień';}
             showGlobalToast(`Błąd sieciowy (Rename Single): ${error.message}`, true);
+            prodTitleInput.value = prodTitleInput.dataset.originalValue;
+            prodTitleInput.classList.remove('changed');
         });
     }
     function toggleSelectAllTestAi() {
@@ -1205,36 +1227,75 @@ if ($pdo) {
         showGlobalToast(`Zakończono. Zakolejkowano: ${successCount}, Błędów: ${errorCount}.`, errorCount > 0);
         if(runTestAiSelectedBtnTestAi) runTestAiSelectedBtnTestAi.disabled = false; 
     }
-    async function renameSelectedFoldersBulkTestAi() { 
+    async function renameSelectedFoldersBulkTestAi() {
         const selectedIds = getSelectedIdsTestAi();
         if (selectedIds.length === 0) { showGlobalToast('Nie zaznaczono żadnych galerii.', true); return; }
-        if (!confirm(`Zmienić nazwy folderów dla ${selectedIds.length} galerii?`)) return;
-        if(renameSelectedBtnTestAi) renameSelectedBtnTestAi.disabled = true;
-        let successCount = 0, errorCount = 0;
+        if (!confirm(`Zastosować tytuły testowe i zmienić nazwy folderów dla ${selectedIds.length} galerii?`)) return;
+
+        if (renameSelectedBtnTestAi) renameSelectedBtnTestAi.disabled = true;
+        let successCount = 0, errorCount = 0, ignoredCount = 0;
+
         for (const galleryId of selectedIds) {
             const row = document.getElementById(`row-test-ai-${sanitizeForIdTestAi(galleryId)}`);
-            let input, btn;
-             if (row) {
-                input = row.querySelector('.prod-title-input-test-ai');
-                btn = row.querySelector('.rename-btn-single'); 
-                if(btn) btn.disabled = true; 
-            } else { errorCount++; showGlobalToast(`Błąd ${galleryId}: Nie znaleziono wiersza.`, true, 4000); continue; }
-            const newTitle = input.value.trim();
-            if (!newTitle) { errorCount++; showGlobalToast(`Błąd ${galleryId}: Tytuł prod. pusty.`, true, 4000); if(btn) btn.disabled = false; continue; }
+            if (!row) {
+                errorCount++;
+                showGlobalToast(`Błąd ${galleryId}: Nie znaleziono wiersza.`, true, 4000);
+                continue;
+            }
+
+            const prodTitleInput = row.querySelector('.prod-title-input-test-ai');
+            const testTitleInput = row.querySelector('.test-title-input-test-ai');
+            const btn = row.querySelector('.rename-btn-single');
+            
+            const testTitle = testTitleInput.value.trim();
+            if (!testTitle) {
+                ignoredCount++;
+                continue; // Pomiń, jeśli tytuł testowy jest pusty
+            }
+            
+            // Kopiowanie i zmiana nazwy
+            prodTitleInput.value = testTitle;
+            if (btn) btn.disabled = true;
+
             try {
-                 const response = await fetch(`${API_URL_INDEX}?action=rename_gallery_folder`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gallery_id: galleryId, new_title: newTitle }) });
-                 const data = await response.json();
-                 if (!response.ok) throw new Error(data.message || response.statusText);
-                 if (data.success) { successCount++; input.dataset.originalValue = newTitle; input.classList.remove('changed');
-                     if (currentGalleriesDataTestAi[galleryId]) currentGalleriesDataTestAi[galleryId].determined_title = newTitle;
-                 } else { errorCount++; showGlobalToast(`Błąd ${galleryId}: ${data.message || 'Błąd API'}`, true, 4000); }
-            } catch (error) { errorCount++; showGlobalToast(`Błąd ${galleryId}: ${error.message}`, true, 4000); } 
-            finally { if(btn) btn.disabled = false; } 
-            await new Promise(resolve => setTimeout(resolve, 100)); 
+                const response = await fetch(`${API_URL_INDEX}?action=rename_gallery_folder`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gallery_id: galleryId, new_title: testTitle })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || response.statusText);
+
+                if (data.success) {
+                    successCount++;
+                    prodTitleInput.dataset.originalValue = testTitle;
+                    prodTitleInput.classList.remove('changed');
+                    if (currentGalleriesDataTestAi[galleryId]) {
+                        currentGalleriesDataTestAi[galleryId].determined_title = testTitle;
+                    }
+                } else {
+                    errorCount++;
+                    showGlobalToast(`Błąd ${galleryId}: ${data.message || 'Błąd API'}`, true, 4000);
+                    prodTitleInput.value = prodTitleInput.dataset.originalValue; // Przywróć
+                }
+            } catch (error) {
+                errorCount++;
+                showGlobalToast(`Błąd ${galleryId}: ${error.message}`, true, 4000);
+                prodTitleInput.value = prodTitleInput.dataset.originalValue; // Przywróć
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
-        showGlobalToast(`Zakończono. Sukcesów: ${successCount}, Błędów: ${errorCount}. Odświeżam...`, errorCount > 0);
-        if(renameSelectedBtnTestAi) renameSelectedBtnTestAi.disabled = false; 
-        fetchGalleriesTestAi(); 
+
+        let summaryMessage = `Zakończono. Sukcesów: ${successCount}, Błędów: ${errorCount}`;
+        if (ignoredCount > 0) {
+            summaryMessage += `, Pustych/Pominiętych: ${ignoredCount}`;
+        }
+        showGlobalToast(summaryMessage, errorCount > 0);
+
+        if (renameSelectedBtnTestAi) renameSelectedBtnTestAi.disabled = false;
+        fetchGalleriesTestAi(); // Odśwież widok
     }
     function updatePaginationTestAi() {
         const totalPages = Math.ceil(totalItemsTestAi / itemsPerPageTestAi);
