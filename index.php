@@ -97,6 +97,13 @@ if ($pdo) {
                         <option value="<?php echo htmlspecialchars($status_filter_item); ?>"><?php echo htmlspecialchars(str_replace('_', ' ', $status_filter_item)); ?></option>
                     <?php endforeach; ?>
                 </select>
+                <label for="items-per-page-test-ai">Na stronę:</label>
+                <select id="items-per-page-test-ai">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
                 <button id="load-data-btn-test-ai">Załaduj Dane</button>
                 <div class="sort-controls">
                     <label for="sort-by-filter-test-ai">Sortuj wg:</label>
@@ -976,8 +983,8 @@ if ($pdo) {
     let tbodyTestAi, loadBtnTestAi, modelFilterTestAi, statusFilterTestAi, sortByFilterTestAi, sortOrderFilterTestAi;
     let selectAllHeaderTestAi, selectAllBtnTestAi, runTestAiSelectedBtnTestAi, renameSelectedBtnTestAi;
     let selectionStatusTestAi, prevPageBtnTestAi, nextPageBtnTestAi, pageInfoTestAi, pollingIndicatorTestAi;
+    let itemsPerPageSelectTestAi;
     let currentPageTestAi = 1;
-    const itemsPerPageTestAi = 25; 
     let totalItemsTestAi = 0;
     let currentGalleriesDataTestAi = {}; 
     let pollingIntervalTestAi = null;
@@ -1003,10 +1010,11 @@ if ($pdo) {
         setLoadingTestAi(true);
         const model = modelFilterTestAi ? modelFilterTestAi.value : '';
         const statusVal = statusFilterTestAi ? statusFilterTestAi.value : ''; 
-        const offset = (currentPageTestAi - 1) * itemsPerPageTestAi;
+        const itemsPerPage = itemsPerPageSelectTestAi ? parseInt(itemsPerPageSelectTestAi.value, 10) : 25;
+        const offset = (currentPageTestAi - 1) * itemsPerPage;
         currentSortByTestAi = sortByFilterTestAi ? sortByFilterTestAi.value : 'model_gallery';
         currentSortOrderTestAi = sortOrderFilterTestAi ? sortOrderFilterTestAi.value : 'ASC';
-        const queryParams = new URLSearchParams({ action: 'get_galleries_for_ai_test', model: model, status_filter: statusVal, limit: itemsPerPageTestAi, offset: offset, sort_by: currentSortByTestAi, sort_order: currentSortOrderTestAi, _: new Date().getTime() });
+        const queryParams = new URLSearchParams({ action: 'get_galleries_for_ai_test', model: model, status_filter: statusVal, limit: itemsPerPage, offset: offset, sort_by: currentSortByTestAi, sort_order: currentSortOrderTestAi, _: new Date().getTime() });
         fetch(`${API_URL_INDEX}?${queryParams.toString()}`)
             .then(res => res.json())
             .then(data => {
@@ -1131,9 +1139,8 @@ if ($pdo) {
             return;
         }
 
-        // Krok 1: Kopiowanie wartości
         prodTitleInput.value = testTitle;
-        prodTitleInput.classList.add('changed'); // Oznacz jako zmienione
+        prodTitleInput.classList.add('changed');
         
         if(btn) {btn.disabled = true; btn.textContent = 'Zmieniam...';}
 
@@ -1149,12 +1156,21 @@ if ($pdo) {
                 showGlobalToast(`Zapis i zmiana nazwy dla ${galleryId}: ${data.message}`);
                 prodTitleInput.dataset.originalValue = testTitle;
                 prodTitleInput.classList.remove('changed');
+                
+                if (data.new_folder_path) {
+                    const folderCell = row.querySelector('.folder-cell');
+                    if (folderCell) folderCell.textContent = data.new_folder_path;
+                }
+
                 if (currentGalleriesDataTestAi[galleryId]) {
                     currentGalleriesDataTestAi[galleryId].determined_title = testTitle;
+                    if (data.new_folder_path) {
+                        currentGalleriesDataTestAi[galleryId].folder_path = data.new_folder_path;
+                    }
                 }
             } else {
                 showGlobalToast(`Błąd zapisu/zmiany nazwy ${galleryId}: ${data.message}`, true);
-                prodTitleInput.value = prodTitleInput.dataset.originalValue; // Przywróć starą wartość w razie błędu
+                prodTitleInput.value = prodTitleInput.dataset.originalValue;
                 prodTitleInput.classList.remove('changed');
             }
         })
@@ -1250,10 +1266,9 @@ if ($pdo) {
             const testTitle = testTitleInput.value.trim();
             if (!testTitle) {
                 ignoredCount++;
-                continue; // Pomiń, jeśli tytuł testowy jest pusty
+                continue;
             }
             
-            // Kopiowanie i zmiana nazwy
             prodTitleInput.value = testTitle;
             if (btn) btn.disabled = true;
 
@@ -1270,18 +1285,27 @@ if ($pdo) {
                     successCount++;
                     prodTitleInput.dataset.originalValue = testTitle;
                     prodTitleInput.classList.remove('changed');
+                    
+                    if (data.new_folder_path) {
+                        const folderCell = row.querySelector('.folder-cell');
+                        if (folderCell) folderCell.textContent = data.new_folder_path;
+                    }
+
                     if (currentGalleriesDataTestAi[galleryId]) {
                         currentGalleriesDataTestAi[galleryId].determined_title = testTitle;
+                        if (data.new_folder_path) {
+                            currentGalleriesDataTestAi[galleryId].folder_path = data.new_folder_path;
+                        }
                     }
                 } else {
                     errorCount++;
                     showGlobalToast(`Błąd ${galleryId}: ${data.message || 'Błąd API'}`, true, 4000);
-                    prodTitleInput.value = prodTitleInput.dataset.originalValue; // Przywróć
+                    prodTitleInput.value = prodTitleInput.dataset.originalValue;
                 }
             } catch (error) {
                 errorCount++;
                 showGlobalToast(`Błąd ${galleryId}: ${error.message}`, true, 4000);
-                prodTitleInput.value = prodTitleInput.dataset.originalValue; // Przywróć
+                prodTitleInput.value = prodTitleInput.dataset.originalValue;
             } finally {
                 if (btn) btn.disabled = false;
             }
@@ -1295,10 +1319,10 @@ if ($pdo) {
         showGlobalToast(summaryMessage, errorCount > 0);
 
         if (renameSelectedBtnTestAi) renameSelectedBtnTestAi.disabled = false;
-        fetchGalleriesTestAi(); // Odśwież widok
     }
     function updatePaginationTestAi() {
-        const totalPages = Math.ceil(totalItemsTestAi / itemsPerPageTestAi);
+        const itemsPerPage = itemsPerPageSelectTestAi ? parseInt(itemsPerPageSelectTestAi.value, 10) : 25;
+        const totalPages = Math.ceil(totalItemsTestAi / itemsPerPage);
         if(pageInfoTestAi) pageInfoTestAi.textContent = `Strona ${currentPageTestAi} z ${totalPages || 1} (Galerii: ${totalItemsTestAi})`;
         if(prevPageBtnTestAi) prevPageBtnTestAi.disabled = currentPageTestAi === 1;
         if(nextPageBtnTestAi) nextPageBtnTestAi.disabled = currentPageTestAi >= totalPages || totalItemsTestAi === 0;
@@ -1449,6 +1473,7 @@ if ($pdo) {
         statusFilterTestAi = document.getElementById('status-filter-test-ai');
         sortByFilterTestAi = document.getElementById('sort-by-filter-test-ai');
         sortOrderFilterTestAi = document.getElementById('sort-order-filter-test-ai');
+        itemsPerPageSelectTestAi = document.getElementById('items-per-page-test-ai');
         selectAllHeaderTestAi = document.getElementById('select-all-header-test-ai');
         selectAllBtnTestAi = document.getElementById('select-all-btn-test-ai');
         runTestAiSelectedBtnTestAi = document.getElementById('run-test-ai-selected-btn-test-ai');
@@ -1459,15 +1484,20 @@ if ($pdo) {
         pageInfoTestAi = document.getElementById('page-info-test-ai');
         pollingIndicatorTestAi = document.getElementById('polling-indicator-test-ai');
         initializeTab3Vars();
-        if (loadBtnTestAi) loadBtnTestAi.addEventListener('click', () => { currentPageTestAi = 1; fetchGalleriesTestAi(); });
-        if (sortByFilterTestAi) sortByFilterTestAi.addEventListener('change', () => { currentPageTestAi = 1; fetchGalleriesTestAi(); });
-        if (sortOrderFilterTestAi) sortOrderFilterTestAi.addEventListener('change', () => { currentPageTestAi = 1; fetchGalleriesTestAi(); });
+
+        const commonChangeHandler = () => { currentPageTestAi = 1; fetchGalleriesTestAi(); };
+        if (loadBtnTestAi) loadBtnTestAi.addEventListener('click', commonChangeHandler);
+        if (sortByFilterTestAi) sortByFilterTestAi.addEventListener('change', commonChangeHandler);
+        if (sortOrderFilterTestAi) sortOrderFilterTestAi.addEventListener('change', commonChangeHandler);
+        if (itemsPerPageSelectTestAi) itemsPerPageSelectTestAi.addEventListener('change', commonChangeHandler);
+        
         if (selectAllHeaderTestAi) selectAllHeaderTestAi.addEventListener('change', toggleSelectAllTestAi);
         if (selectAllBtnTestAi) selectAllBtnTestAi.addEventListener('click', () => { if(selectAllHeaderTestAi) selectAllHeaderTestAi.checked = !selectAllHeaderTestAi.checked; toggleSelectAllTestAi(); });
         if (runTestAiSelectedBtnTestAi) runTestAiSelectedBtnTestAi.addEventListener('click', runTestAiForSelectedBulk); 
         if (renameSelectedBtnTestAi) renameSelectedBtnTestAi.addEventListener('click', renameSelectedFoldersBulkTestAi); 
         if (prevPageBtnTestAi) prevPageBtnTestAi.addEventListener('click', () => { if (currentPageTestAi > 1) { currentPageTestAi--; fetchGalleriesTestAi(); } });
-        if (nextPageBtnTestAi) nextPageBtnTestAi.addEventListener('click', () => { const totalPages = Math.ceil(totalItemsTestAi / itemsPerPageTestAi); if (currentPageTestAi < totalPages && totalItemsTestAi > 0) { currentPageTestAi++; fetchGalleriesTestAi(); } });
+        if (nextPageBtnTestAi) nextPageBtnTestAi.addEventListener('click', () => { const totalPages = Math.ceil(totalItemsTestAi / (itemsPerPageSelectTestAi ? parseInt(itemsPerPageSelectTestAi.value, 10) : 25)); if (currentPageTestAi < totalPages && totalItemsTestAi > 0) { currentPageTestAi++; fetchGalleriesTestAi(); } });
+        
         window.onclick = function(event) {
             if (event.target == document.getElementById('queue-modal')) closeQueueModal();
             if (event.target == document.getElementById('image-viewer-modal')) closeImageViewerModal();
