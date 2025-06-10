@@ -1,3 +1,4 @@
+# mazril/waifudownloader/mazril-WaifuDownloader-ffd7b731e706483754198c309ad22a839f36f68e/main.py
 # -*- coding: utf-8 -*-
 import os
 import sys
@@ -7,6 +8,7 @@ import signal
 import atexit
 import logging
 import logging.handlers
+import selectors
 
 import constants
 import config_handler
@@ -89,6 +91,10 @@ def final_cleanup():
     logging.shutdown()
 
 def main_menu():
+    """
+    Wyświetla menu główne i oczekuje na wybór użytkownika z 10-sekundowym timeoutem.
+    Jeśli użytkownik nie dokona wyboru, automatycznie wybierana jest opcja '1'.
+    """
     print("\n" + "=" * 50)
     print(" " * 19 + "MENU GŁÓWNE")
     print("=" * 50)
@@ -100,7 +106,39 @@ def main_menu():
     print(" 2. Sprawdź tylko nowe/zaktualizowane galerie (szybkie skanowanie)")
     print(" 3. Wyjdź")
     print("=" * 50)
-    choice = input(" Wybierz opcję (1-3): ")
+
+    timeout_seconds = 10
+    choice = ""
+
+    # Użycie `selectors` do nieblokującego odczytu wejścia, co pozwala na implementację timera.
+    # Działa na systemach Linux, macOS i nowszych wersjach Windows.
+    sel = selectors.DefaultSelector()
+    sel.register(sys.stdin, selectors.EVENT_READ)
+    
+    start_time = time.monotonic()
+    
+    while time.monotonic() - start_time < timeout_seconds:
+        remaining_time = timeout_seconds - (time.monotonic() - start_time)
+        # Dynamiczny prompt z odliczaniem
+        sys.stdout.write(f"\r Wybierz opcję (1-3) (automatyczny start za {int(round(remaining_time))}s): ")
+        sys.stdout.flush()
+
+        # Czekaj na dane wejściowe, ale z krótkim timeoutem, aby pętla mogła się odświeżać
+        events = sel.select(timeout=0.2)
+        if events:
+            choice = sys.stdin.readline().strip()
+            # Wyczyść linię z odliczaniem po dokonaniu wyboru
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
+            break  # Wyjdź z pętli, ponieważ użytkownik dokonał wyboru
+    
+    # Jeśli pętla zakończyła się z powodu timeoutu, a `choice` jest nadal pusty
+    if not choice:
+        sys.stdout.write("\r" + " " * 80 + "\r")  # Wyczyść linię z odliczaniem
+        sys.stdout.flush()
+        print("Czas minął. Automatycznie wybrano opcję '1'.")
+        choice = '1'
+
     logger.info(f"Wybrano opcję menu: {choice}")
 
     if choice == '1':
