@@ -190,18 +190,10 @@ def get_or_create_model(model_name):
 
 def get_gallery(gallery_id):
     raw_result = execute_query("SELECT g.*, m.model_name, m.sanitized_name FROM galleries g JOIN models m ON g.model_id = m.model_id WHERE g.gallery_id = %s", (gallery_id,), fetch_one=True)
-    if raw_result:
-        logger.debug(f"DB_GET_GALLERY ({gallery_id}): Surowe dane: {str(raw_result)[:500]}...")
-        if 'status' in raw_result: 
-            logger.debug(f"DB_GET_GALLERY ({gallery_id}): Typ statusu: {type(raw_result.get('status'))}, Wartość: '{raw_result.get('status')}'")
-        else:
-            logger.warning(f"DB_GET_GALLERY ({gallery_id}): Klucz 'status' nieobecny w wyniku: {raw_result}")
-    else:
-        logger.warning(f"DB_GET_GALLERY ({gallery_id}): Nie znaleziono galerii.")
     return raw_result
 
 def get_model_galleries(model_id): 
-    query = "SELECT * FROM galleries WHERE model_id = %s ORDER BY gallery_id DESC" 
+    query = "SELECT * FROM galleries WHERE model_id = %s AND is_disabled = FALSE ORDER BY gallery_id DESC" 
     return execute_query(query, (model_id,), fetch_all=True)
 
 def update_gallery(gallery_id, **kwargs):
@@ -209,12 +201,11 @@ def update_gallery(gallery_id, **kwargs):
     Aktualizuje określone kolumny dla danej galerii w bazie danych.
     
     Opis modyfikacji:
-    - Do listy `valid_columns` dodano nowe kolumny: `links_collected` oraz
-      `image_links_json`, aby umożliwić ich aktualizację.
+    - Dodano `is_disabled` do listy `valid_columns`, aby umożliwić
+      aktualizację tej flagi.
       
     Wpływ na inne funkcje:
-    - Umożliwia funkcji `process_single_gallery` zapisywanie zebranych linków
-      i flagi do bazy danych, co jest podstawą nowego, trwałego mechanizmu.
+    - Umożliwia `processing.py` i `api.php` włączanie/wyłączanie galerii.
     """
     if not kwargs:
         logger.warning(f"Wywołano update_gallery bez żadnych argumentów do aktualizacji dla {gallery_id}.")
@@ -224,14 +215,14 @@ def update_gallery(gallery_id, **kwargs):
         'determined_title', 'test_ai_title', 'folder_path', 'expected_count', 
         'downloaded_count', 'status', 'tags_json', 'initial_data_fetched',
         'last_checked', 'last_downloaded', 'last_processed_timestamp', 'error_message', 'gallery_description',
-        'links_collected', 'image_links_json'
+        'links_collected', 'image_links_json', 'is_disabled'
     ]
     set_clauses = []
     params = []
     for key, value in kwargs.items():
         if key in valid_columns:
             set_clauses.append(f"`{key}` = %s") 
-            if key in ['initial_data_fetched', 'links_collected'] and isinstance(value, bool):
+            if key in ['initial_data_fetched', 'links_collected', 'is_disabled'] and isinstance(value, bool):
                 params.append(1 if value else 0) 
             elif key in ['tags_json', 'image_links_json'] and isinstance(value, (dict, list)):
                  params.append(json.dumps(value, ensure_ascii=False))
@@ -263,7 +254,6 @@ def update_gallery_smart(gallery_data, only_if_newer_scan_data=False):
     existing_gallery = get_gallery(gallery_id)
     
     if existing_gallery:
-        # Galeria istnieje - przygotuj aktualizację
         updates_to_perform = {}
         if 'url' in gallery_data and gallery_data['url'] != existing_gallery.get('url'):
             updates_to_perform['url'] = gallery_data['url']
@@ -281,7 +271,7 @@ def update_gallery_smart(gallery_data, only_if_newer_scan_data=False):
         
         if 'last_checked' in gallery_data:
              updates_to_perform['last_checked'] = gallery_data['last_checked']
-        elif updates_to_perform: # Jeśli są jakiekolwiek inne zmiany, zaktualizuj też last_checked
+        elif updates_to_perform: 
              updates_to_perform['last_checked'] = time.strftime('%Y-%m-%d %H:%M:%S')
 
         if 'status' in gallery_data and \
@@ -301,7 +291,6 @@ def update_gallery_smart(gallery_data, only_if_newer_scan_data=False):
         if 'tags_json' in gallery_data: 
             updates_to_perform['tags_json'] = gallery_data['tags_json']
 
-
         if updates_to_perform:
             logger.info(f"update_gallery_smart dla {gallery_id}: Wykonuję aktualizacje: {list(updates_to_perform.keys())}")
             return update_gallery(gallery_id, **updates_to_perform)
@@ -312,93 +301,83 @@ def update_gallery_smart(gallery_data, only_if_newer_scan_data=False):
         logger.info(f"Wstawiam nową galerię do DB (przez update_gallery_smart): {gallery_id}")
         
         columns_for_insert = [
-            'gallery_id', 'model_id', 'url', 'original_title', 
-            'expected_count', 'status', 
-            'initial_data_fetched', 
-            'downloaded_count', 
-            'source_page_title', 'determined_title', 'test_ai_title', 'folder_path', 'tags_json',
-            'last_checked', 'gallery_description'
+            'gallery_id', 'model_id', 'url', 'original_title', 'expected_count', 'status', 
+            'initial_data_fetched', 'downloaded_count', 'source_page_title', 
+            'determined_title', 'test_ai_title', 'folder_path', 'tags_json',
+            'last_checked', 'gallery_description', 'is_disabled'
         ]
         
         values_dict = {
             'gallery_id': gallery_data.get('gallery_id'),
-            'model_id': gallery_data.get('model_id'), 
-            'url': gallery_data.get('url'),
+            'model_id': gallery_data.get('model_id'), 'url': gallery_data.get('url'),
             'original_title': gallery_data.get('original_title'),
             'expected_count': gallery_data.get('expected_count'), 
             'status': gallery_data.get('status', 'pending_check'), 
             'initial_data_fetched': gallery_data.get('initial_data_fetched', False), 
             'downloaded_count': gallery_data.get('downloaded_count', 0), 
-            'source_page_title': gallery_data.get('source_page_title'), 
-            'determined_title': gallery_data.get('determined_title'), 
-            'test_ai_title': gallery_data.get('test_ai_title'),       
-            'folder_path': gallery_data.get('folder_path'),           
+            'source_page_title': gallery_data.get('source_page_title'), 'determined_title': gallery_data.get('determined_title'), 
+            'test_ai_title': gallery_data.get('test_ai_title'), 'folder_path': gallery_data.get('folder_path'),           
             'tags_json': json.dumps(gallery_data.get('tags_json'), ensure_ascii=False) if gallery_data.get('tags_json') else None, 
             'last_checked': gallery_data.get('last_checked', time.strftime('%Y-%m-%d %H:%M:%S')),
-            'gallery_description': gallery_data.get('gallery_description')
+            'gallery_description': gallery_data.get('gallery_description'),
+            'is_disabled': gallery_data.get('is_disabled', False)
         }
         
-        final_columns_for_insert = []
-        final_values_placeholders = []
-        final_values_params = []
+        final_columns_for_insert, final_values_placeholders, final_values_params = [], [], []
         
         actual_db_columns = None
         try:
             sample_gallery = execute_query("SELECT * FROM galleries LIMIT 1", fetch_one=True)
-            if sample_gallery:
-                actual_db_columns = list(sample_gallery.keys())
-        except Exception as e_cols:
-            logger.warning(f"Nie udało się pobrać rzeczywistych nazw kolumn z tabeli galleries: {e_cols}")
+            if sample_gallery: actual_db_columns = list(sample_gallery.keys())
+        except Exception as e_cols: logger.warning(f"Nie udało się pobrać rzeczywistych nazw kolumn z tabeli galleries: {e_cols}")
 
         for col_name in columns_for_insert:
             if actual_db_columns and col_name not in actual_db_columns:
-                logger.warning(f"Kolumna '{col_name}' zdefiniowana w kodzie nie istnieje w tabeli 'galleries' w bazie danych. Pomijam ją przy INSERT dla nowej galerii.")
+                logger.warning(f"Kolumna '{col_name}' zdefiniowana w kodzie nie istnieje w tabeli 'galleries'. Pomijam przy INSERT.")
                 continue
 
             current_val_for_insert = values_dict.get(col_name)
-
-            if current_val_for_insert is not None or col_name == 'initial_data_fetched':
+            if current_val_for_insert is not None or col_name in ['initial_data_fetched', 'is_disabled']:
                 final_columns_for_insert.append(f"`{col_name}`")
                 final_values_placeholders.append('%s')
-                
                 val_to_append = current_val_for_insert
-                if col_name == 'initial_data_fetched' and current_val_for_insert is None: 
+                if col_name in ['initial_data_fetched', 'is_disabled'] and current_val_for_insert is None: 
                     val_to_append = False 
-                
-                if isinstance(val_to_append, bool):
-                    final_values_params.append(1 if val_to_append else 0)
-                else:
-                    final_values_params.append(val_to_append)
+                if isinstance(val_to_append, bool): final_values_params.append(1 if val_to_append else 0)
+                else: final_values_params.append(val_to_append)
         
         if not final_columns_for_insert: 
-            logger.error(f"Brak danych do wstawienia dla nowej galerii {gallery_id} w update_gallery_smart (po weryfikacji kolumn).")
+            logger.error(f"Brak danych do wstawienia dla nowej galerii {gallery_id} w update_gallery_smart.")
             return False
 
         query = f"INSERT INTO galleries ({', '.join(final_columns_for_insert)}) VALUES ({', '.join(final_values_placeholders)})"
         return execute_query(query, tuple(final_values_params), commit=True)
 
 def get_model_galleries_for_processing(model_id, check_mode="all_or_incomplete"):
-    base_query = "SELECT * FROM galleries WHERE model_id = %s"
+    """
+    Pobiera galerie modelu do przetworzenia, ignorując te, które są wyłączone.
+    
+    Opis modyfikacji:
+    - Dodano warunek `AND g.is_disabled = FALSE` do wszystkich zapytań,
+      aby skrypt nie próbował ponownie przetwarzać wyłączonych galerii.
+      
+    Wpływ na inne funkcje:
+    - Główna pętla w `processing.py` będzie teraz automatycznie pomijać
+      wyłączone galerie.
+    """
+    base_query = "SELECT * FROM galleries g WHERE g.model_id = %s AND g.is_disabled = FALSE"
     conditions = []
-    statuses_fully_processed_for_download = "('completed', 'completed_with_tolerance')"
-    statuses_ai_related_to_exclude_from_main_loop = "('pending_production_ai', 'pending_test_ai', 'pending_initial_fetch_prod_ai', 'pending_initial_fetch_test_ai', 'test_completed', 'error_ai_prod', 'error_ai_test', 'error_ai')"
+    statuses_final = "('completed', 'completed_with_tolerance', 'disabled_bad_links')"
+    statuses_ai_cycle = "('pending_production_ai', 'pending_test_ai', 'pending_initial_fetch_prod_ai', 'pending_initial_fetch_test_ai', 'test_completed', 'error_ai_prod', 'error_ai_test', 'error_ai')"
     statuses_to_retry_later = "('partially_downloaded', 'downloaded_unknown_total')"
 
     if check_mode == "only_new_or_count_changed":
         conditions.append(f"""
-            (initial_data_fetched = FALSE OR 
-             links_collected = FALSE OR
-             status = 'pending_check' OR
-             status = 'error'
-            ) AND status NOT IN {statuses_to_retry_later}
+            (initial_data_fetched = FALSE OR links_collected = FALSE OR status = 'pending_check' OR status = 'error')
+             AND status NOT IN {statuses_to_retry_later} AND status NOT IN {statuses_ai_cycle}
         """)
     elif check_mode == "all_or_incomplete":
-        conditions.append(f"""
-            ( (initial_data_fetched = FALSE OR links_collected = FALSE) OR 
-             (status NOT IN {statuses_fully_processed_for_download})
-            ) AND status NOT IN {statuses_ai_related_to_exclude_from_main_loop}
-              AND status NOT IN {statuses_to_retry_later}
-        """)
+        conditions.append(f"status NOT IN {statuses_final} AND status NOT IN {statuses_ai_cycle} AND status NOT IN {statuses_to_retry_later}")
     elif check_mode == "fill_incomplete_only":
         conditions.append(f"status IN {statuses_to_retry_later}")
     else:
@@ -411,35 +390,31 @@ def get_model_galleries_for_processing(model_id, check_mode="all_or_incomplete")
 
 
 def get_ready_to_download_galleries_for_model(model_id):
-    """
-    Pobiera galerie dla danego modelu, które mają już nazwę od AI i są gotowe do pobrania.
-    
-    Opis modyfikacji:
-    - Dodano warunek `links_collected = TRUE`, aby upewnić się, że pobieramy
-      tylko te galerie, dla których linki zostały już zebrane i zapisane w DB.
-    """
     query = """
         SELECT * FROM galleries 
         WHERE model_id = %s 
+          AND is_disabled = FALSE
           AND determined_title IS NOT NULL
           AND links_collected = TRUE
-          AND status NOT IN ('completed', 'completed_with_tolerance', 'partially_downloaded', 'downloaded_unknown_total')
+          AND status NOT IN ('completed', 'completed_with_tolerance', 'partially_downloaded', 'downloaded_unknown_total', 'disabled_bad_links')
         ORDER BY original_title ASC, gallery_id DESC
     """
     return execute_query(query, (model_id,), fetch_all=True) or []
 
 def get_incomplete_galleries_db_for_queue(): 
-    statuses_definitely_complete = "('completed', 'completed_with_tolerance')" 
+    statuses_definitely_complete = "('completed', 'completed_with_tolerance', 'disabled_bad_links')" 
     statuses_ai_cycle_to_exclude = "('pending_production_ai', 'pending_test_ai', 'pending_initial_fetch_prod_ai', 'pending_initial_fetch_test_ai', 'test_completed', 'error_ai_test', 'error_ai_prod', 'error_ai')"
     query = f"""
         SELECT g.gallery_id, g.url, g.original_title, g.determined_title, g.expected_count, m.model_name
         FROM galleries g
         JOIN models m ON g.model_id = m.model_id
         WHERE 
-          (g.initial_data_fetched = FALSE OR g.status = 'pending_check' OR g.status = 'error' OR g.links_collected = FALSE) OR 
-          (g.status NOT IN {statuses_definitely_complete} AND 
-           g.status NOT IN {statuses_ai_cycle_to_exclude} AND
-           (g.expected_count IS NULL OR g.downloaded_count < g.expected_count)
+          g.is_disabled = FALSE AND (
+            (g.initial_data_fetched = FALSE OR g.status = 'pending_check' OR g.status = 'error' OR g.links_collected = FALSE) OR 
+            (g.status NOT IN {statuses_definitely_complete} AND 
+             g.status NOT IN {statuses_ai_cycle_to_exclude} AND
+             (g.expected_count IS NULL OR g.downloaded_count < g.expected_count)
+            )
           )
         ORDER BY m.model_name, g.gallery_id
     """
