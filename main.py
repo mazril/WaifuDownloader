@@ -94,6 +94,7 @@ def main_menu():
     """
     Wyświetla menu główne i oczekuje na wybór użytkownika z 10-sekundowym timeoutem.
     Jeśli użytkownik nie dokona wyboru, automatycznie wybierana jest opcja '1'.
+    Implementacja jest różna dla Windows i innych systemów, aby uniknąć błędów.
     """
     print("\n" + "=" * 50)
     print(" " * 19 + "MENU GŁÓWNE")
@@ -110,34 +111,51 @@ def main_menu():
     timeout_seconds = 10
     choice = ""
 
-    # Użycie `selectors` do nieblokującego odczytu wejścia, co pozwala na implementację timera.
-    # Działa na systemach Linux, macOS i nowszych wersjach Windows.
-    sel = selectors.DefaultSelector()
-    sel.register(sys.stdin, selectors.EVENT_READ)
-    
-    start_time = time.monotonic()
-    
-    while time.monotonic() - start_time < timeout_seconds:
-        remaining_time = timeout_seconds - (time.monotonic() - start_time)
-        # Dynamiczny prompt z odliczaniem
-        sys.stdout.write(f"\r Wybierz opcję (1-3) (automatyczny start za {int(round(remaining_time))}s): ")
-        sys.stdout.flush()
-
-        # Czekaj na dane wejściowe, ale z krótkim timeoutem, aby pętla mogła się odświeżać
-        events = sel.select(timeout=0.2)
-        if events:
-            choice = sys.stdin.readline().strip()
-            # Wyczyść linię z odliczaniem po dokonaniu wyboru
-            sys.stdout.write("\r" + " " * 80 + "\r")
+    if sys.platform == "win32":
+        import msvcrt
+        key_pressed = False
+        start_time = time.monotonic()
+        
+        while time.monotonic() - start_time < timeout_seconds:
+            remaining_time = timeout_seconds - (time.monotonic() - start_time)
+            sys.stdout.write(f"\r Automatyczny start za {int(round(remaining_time))}s... (Naciśnij dowolny klawisz, aby wybrać ręcznie) ")
             sys.stdout.flush()
-            break  # Wyjdź z pętli, ponieważ użytkownik dokonał wyboru
-    
-    # Jeśli pętla zakończyła się z powodu timeoutu, a `choice` jest nadal pusty
-    if not choice:
+            if msvcrt.kbhit():
+                msvcrt.getch()  # Pobierz znak z bufora, aby go wyczyścić
+                key_pressed = True
+                break
+            time.sleep(0.1)
+
         sys.stdout.write("\r" + " " * 80 + "\r")  # Wyczyść linię z odliczaniem
         sys.stdout.flush()
-        print("Czas minął. Automatycznie wybrano opcję '1'.")
-        choice = '1'
+        
+        if key_pressed:
+            choice = input(" Wybierz opcję (1-3): ")
+        else:
+            print("Czas minął. Automatycznie wybrano opcję '1'.")
+            choice = '1'
+    else:  # Dla Linux, macOS
+        sel = selectors.DefaultSelector()
+        sel.register(sys.stdin, selectors.EVENT_READ)
+        start_time = time.monotonic()
+        
+        while time.monotonic() - start_time < timeout_seconds:
+            remaining_time = timeout_seconds - (time.monotonic() - start_time)
+            sys.stdout.write(f"\r Wybierz opcję (1-3) (automatyczny start za {int(round(remaining_time))}s): ")
+            sys.stdout.flush()
+
+            events = sel.select(timeout=0.2)
+            if events:
+                choice = sys.stdin.readline().strip()
+                sys.stdout.write("\r" + " " * 80 + "\r")
+                sys.stdout.flush()
+                break
+        
+        if not choice:
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
+            print("Czas minął. Automatycznie wybrano opcję '1'.")
+            choice = '1'
 
     logger.info(f"Wybrano opcję menu: {choice}")
 
