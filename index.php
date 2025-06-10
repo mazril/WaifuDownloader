@@ -99,10 +99,10 @@ if ($pdo) {
                 </select>
                 <label for="items-per-page-test-ai">Na stronę:</label>
                 <select id="items-per-page-test-ai">
-                    <option value="10">10</option>
-                    <option value="25" selected>25</option>
-                    <option value="50">50</option>
                     <option value="100">100</option>
+                    <option value="200" selected>200</option>
+                    <option value="300">300</option>
+                    <option value="400">400</option>
                 </select>
                 <button id="load-data-btn-test-ai">Załaduj Dane</button>
                 <div class="sort-controls">
