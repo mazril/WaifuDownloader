@@ -16,7 +16,7 @@ OUTPUT_FILE_PATH = os.path.join(SCRIPT_DIR, OUTPUT_FILENAME)
 # WAŻNE: Dostosuj tę ścieżkę, jeśli mysqldump.exe znajduje się w innym miejscu
 # lub jeśli nie jest dodany do zmiennej środowiskowej PATH w Twoim systemie.
 # Ta ścieżka została pobrana z Twojego pliku backup_manager.py
-MYSQLDUMP_PATH = r"C:\xampp\mysql\bin\mysqldump.exe"
+MYSQLDUMP_PATH = r"C:\wamp64\bin\mysql\mysql9.1.0\bin\mysqldump.exe"
 
 def generuj_strukture_bazy():
     """
