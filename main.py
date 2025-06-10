@@ -116,14 +116,6 @@ def main_menu():
         return None, None
 
 def main_loop():
-    """
-    Główna pętla programu zarządzająca operacjami.
-    
-    Opis modyfikacji:
-    - Usunięto globalny słownik `collected_gallery_image_links`, ponieważ
-      linki są teraz zapisywane w bazie danych.
-    - Odwołania do tego słownika zostały usunięte z wywołań funkcji.
-    """
     global shutdown_requested
 
     try:
@@ -212,6 +204,12 @@ def main_loop():
                         active_op_name = op_choice
                         active_op_params = params_choice if params_choice is not None else {}
                         current_state = db_manager.get_app_state('script_state') or {}
+                        
+                        # --- POPRAWKA BŁĘDU KeyError ---
+                        if "current_operation" not in current_state:
+                            current_state["current_operation"] = {}
+                        # --- KONIEC POPRAWKI ---
+                            
                         current_state["current_operation"]["name"] = active_op_name
                         current_state["current_operation"]["params"] = active_op_params
                         db_manager.update_app_state('script_state', current_state)

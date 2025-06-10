@@ -7,6 +7,7 @@ import datetime
 import subprocess
 import logging
 import re
+import fnmatch
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -23,9 +24,14 @@ BACKUP_BASE_PATH = os.path.join(SCRIPT_DIR, BACKUP_DIR_NAME)
 DB_STRUCTURE_FILE_NAME = "struktura_bazy_danych.txt"
 
 # --- Konfiguracja Ścieżek Narzędzi MySQL ---
-# DOSTOSUJ TE ŚCIEŻKI, JEŚLI NARZĘDZIA NIE SĄ W SYSTEMOWEJ ZMIENNEJ PATH
-MYSQLDUMP_PATH = r"C:\xampp\mysql\bin\mysqldump.exe"
-MYSQL_CLIENT_PATH = r"C:\xampp\mysql\bin\mysql.exe"
+# ZMIANA: Zaktualizowano ścieżki, aby wskazywały na instalację WampServer zamiast XAMPP.
+# Opis: Poprzednie ścieżki prowadziły do narzędzi z XAMPP, co powodowało błąd uwierzytelniania z nową bazą WampServer.
+#       Teraz musisz podać poprawną ścieżkę do katalogu 'bin' Twojej wersji MySQL w WampServer.
+#       Przykładowa ścieżka: C:\wamp64\bin\mysql\mysql8.0.30\bin\
+# Wpływ: Ta zmiana jest kluczowa dla poprawnego działania funkcji `backup_mysql_database` i `restore_mysql_database`.
+MYSQLDUMP_PATH = r"C:\wamp64\bin\mysql\mysql9.1.0\bin\mysqldump.exe"
+MYSQL_CLIENT_PATH = r"C:\wamp64\bin\mysql\mysql9.1.0\bin\mysql.exe"
+
 
 FILES_TO_BACKUP_EXTENSIONS = ['.py', '.php', '.json', '.crx', '.txt', '.css']
 
@@ -703,12 +709,6 @@ def main_menu():
     - Steruje głównym przepływem aplikacji.
     - Wywołuje funkcje tworzenia backupu, przywracania oraz listowania.
     """
-    import fnmatch # Dodajemy import tutaj, jeśli nie ma go globalnie, a jest potrzebny w backup_program_files
-    global FILES_TO_IGNORE_ON_BACKUP # Jeśli fnmatch jest używany w backup_program_files, upewnij się, że jest tam dostępny
-                                    # W Pythonie importy na poziomie modułu są zazwyczaj wystarczające.
-                                    # Ten import jest dla pewności, jeśli fnmatch miałby być potrzebny w tej funkcji,
-                                    # ale w obecnej strukturze jest używany w backup_program_files.
-
     while True:
         print("\n--- Menedżer Backupów ---")
         print("1. Wykonaj pełny backup (pliki programu i baza danych)")
@@ -754,10 +754,6 @@ def main_menu():
             print("Nieprawidłowy wybór, spróbuj ponownie.")
 
 if __name__ == "__main__":
-    # Dodanie obsługi wzorców do FILES_TO_IGNORE_ON_BACKUP wymaga importu fnmatch
-    # Jeśli nie jest już zaimportowany globalnie
-    import fnmatch # Dla funkcji backup_program_files
-
     log_file_handler = logging.FileHandler(os.path.join(SCRIPT_DIR, 'backup_manager.log'), mode='a', encoding='utf-8')
     log_file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)-8s] [%(name)-20s:%(lineno)4d] %(message)s'))
     logging.getLogger().addHandler(log_file_handler)
