@@ -107,7 +107,7 @@
     },
     "ai_settings": {
         "api_base_url": {
-            "value": "http://localhost:11434",
+            "value": "http://192.168.3.4:11434",
             "description": "Pe\u0142ny adres URL serwera Ollama, u\u017cywany do generowania tytu\u0142\u00f3w galerii przez AI (np. 'http://localhost:11434')."
         },
         "default_model_name": {
