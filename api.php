@@ -353,20 +353,29 @@ switch ($action) {
 
         $galleries = [];
         try {
+            // Zmiana: Zastąpiono :term na ?, aby uniknąć błędu "Invalid parameter number"
             $sql = "SELECT g.gallery_id, g.url, g.original_title, g.determined_title, 
                            g.expected_count, g.downloaded_count, g.status,
                            m.model_name, m.sanitized_name as model_sanitized_name
                     FROM galleries g
                     JOIN models m ON g.model_id = m.model_id
-                    WHERE g.original_title LIKE :term 
-                       OR g.determined_title LIKE :term
-                       OR g.gallery_id LIKE :term 
-                       OR m.model_name LIKE :term
-                    ORDER BY m.model_name ASC, COALESCE(g.determined_title, g.original_title, g.gallery_id) ASC
+                    WHERE g.original_title LIKE ? 
+                       OR g.determined_title LIKE ?
+                       OR g.gallery_id LIKE ? 
+                       OR m.model_name LIKE ?
+                    ORDER BY 
+                        m.model_name ASC, 
+                        COALESCE(
+                            CONVERT(g.determined_title USING utf8mb4), 
+                            CONVERT(g.original_title USING utf8mb4), 
+                            CONVERT(g.gallery_id USING utf8mb4)
+                        ) ASC
                     LIMIT 100"; 
 
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([':term' => '%' . $search_term . '%']);
+            $term_param = '%' . $search_term . '%';
+            // Zmiana: Powiązano parametr 4 razy, po jednym dla każdego znaku ?
+            $stmt->execute([$term_param, $term_param, $term_param, $term_param]);
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             foreach ($results as $row) {
@@ -1050,6 +1059,60 @@ switch ($action) {
             $response['message'] = 'Metoda niedozwolona (wymagany POST).';
         }
         break;
+
+    case 'toggle_gallery_disabled_status':
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!$pdo) { $response['message'] = 'Brak połączenia z DB.'; http_response_code(503); break; }
+            $data = json_decode($raw_post_data, true);
+            $gallery_id = $data['gallery_id'] ?? null;
+
+            if (!$gallery_id) {
+                http_response_code(400); $response['message'] = 'Nie podano ID galerii.'; break;
+            }
+
+            try {
+                $pdo->beginTransaction();
+
+                $stmt_get = $pdo->prepare("SELECT is_disabled FROM galleries WHERE gallery_id = :id FOR UPDATE");
+                $stmt_get->execute([':id' => $gallery_id]);
+                $current_state = $stmt_get->fetchColumn();
+
+                if ($current_state === false) {
+                    $pdo->rollBack();
+                    http_response_code(404);
+                    $response['message'] = 'Nie znaleziono galerii o podanym ID.';
+                    break;
+                }
+
+                $new_state = !$current_state;
+                $new_status = $new_state ? 'disabled_bad_links' : 'pending_check';
+
+                $stmt_update = $pdo->prepare("UPDATE galleries SET is_disabled = :is_disabled, status = :status WHERE gallery_id = :id");
+                $stmt_update->execute([
+                    ':is_disabled' => (int)$new_state,
+                    ':status' => $new_status,
+                    ':id' => $gallery_id
+                ]);
+
+                $pdo->commit();
+                $response = [
+                    'success' => true,
+                    'message' => 'Status galerii został zaktualizowany.',
+                    'new_state_is_disabled' => $new_state
+                ];
+
+            } catch (PDOException $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                error_log("Błąd DB w toggle_gallery_disabled_status: " . $e->getMessage());
+                api_log("Błąd DB w toggle_gallery_disabled_status: " . $e->getMessage());
+                $response['message'] = 'Błąd bazy danych podczas aktualizacji statusu galerii.';
+                http_response_code(500);
+            }
+        } else {
+            http_response_code(405);
+            $response['message'] = 'Metoda niedozwolona (wymagany POST).';
+        }
+        break;
         
     default:
         http_response_code(400);
@@ -1065,5 +1128,5 @@ switch ($action) {
 if (!headers_sent()) { 
     echo json_encode($response);
 }
-exit(); 
+exit();
 ?>
