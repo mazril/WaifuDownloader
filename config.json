@@ -2,75 +2,79 @@
     "scrolling": {
         "wait_for_new": {
             "value": 10,
-            "description": "Maksymalny czas (w sekundach), przez kt\u00f3ry skrypt b\u0119dzie czeka\u0142 na pojawienie si\u0119 nowych element\u00f3w na stronie podczas przewijania, zanim podejmie pr\u00f3b\u0119 od\u015bwie\u017cenia pozycji."
+            "description": "Maksymalny czas (w sekundach), przez który skrypt będzie czekał na pojawienie się nowych elementów na stronie podczas przewijania, zanim podejmie próbę odświeżenia pozycji."
         },
         "pause_between_min": {
             "value": 0.05,
-            "description": "Minimalna pauza (w sekundach) mi\u0119dzy kolejnymi 'skokami' podczas przewijania strony. Zapobiega zbyt szybkiemu przewijaniu."
+            "description": "Minimalna pauza (w sekundach) między kolejnymi 'skokami' podczas przewijania strony. Zapobiega zbyt szybkiemu przewijaniu."
         },
         "pause_between_max": {
             "value": 0.4,
-            "description": "Maksymalna pauza (w sekundach) mi\u0119dzy kolejnymi 'skokami' podczas przewijania. Wprowadza losowo\u015b\u0107, symuluj\u0105c ludzkie zachowanie."
+            "description": "Maksymalna pauza (w sekundach) między kolejnymi 'skokami' podczas przewijania. Wprowadza losowość, symulując ludzkie zachowanie."
         },
         "jump_distance": {
             "value": 450,
-            "description": "Dystans (w pikselach), o jaki strona jest przewijana w jednym 'skoku'. Wi\u0119ksza warto\u015b\u0107 mo\u017ce przyspieszy\u0107 przewijanie, ale mo\u017ce te\u017c pomin\u0105\u0107 elementy."
+            "description": "Dystans (w pikselach), o jaki strona jest przewijana w jednym 'skoku'. Większa wartość może przyspieszyć przewijanie, ale może też pominąć elementy."
         },
         "spinner_wait_time": {
             "value": 10,
-            "description": "Maksymalny czas (w sekundach), przez kt\u00f3ry skrypt b\u0119dzie czeka\u0142, je\u015bli na stronie pojawi si\u0119 widoczny wska\u017anik \u0142adowania (spinner)."
+            "description": "Maksymalny czas (w sekundach), przez który skrypt będzie czekał, jeśli na stronie pojawi się widoczny wskaźnik ładowania (spinner)."
         },
         "refresh_jumps_main": {
             "value": 4,
-            "description": "Liczba skok\u00f3w 'g\u00f3ra/d\u00f3\u0142' wykonywanych podczas od\u015bwie\u017cania pozycji na g\u0142\u00f3wnej stronie modelki, gdy skrypt uzna, \u017ce nic nowego si\u0119 nie \u0142aduje."
+            "description": "Liczba skoków 'góra/dół' wykonywanych podczas odświeżania pozycji na głównej stronie modelki, gdy skrypt uzna, że nic nowego się nie ładuje."
         },
         "gallery_up_jumps": {
             "value": 6,
-            "description": "Liczba skok\u00f3w w g\u00f3r\u0119 podczas pr\u00f3by od\u015bwie\u017cenia pozycji na stronie galerii (gdy wykryto sekcj\u0119 'YOU MAY ALSO LIKE')."
+            "description": "Liczba skoków w górę podczas próby odświeżenia pozycji na stronie galerii (gdy wykryto sekcję 'YOU MAY ALSO LIKE')."
         },
         "gallery_down_jumps": {
             "value": 3,
-            "description": "Liczba skok\u00f3w w d\u00f3\u0142 podczas pr\u00f3by od\u015bwie\u017cenia pozycji na stronie galerii (gdy wykryto sekcj\u0119 'YOU MAY ALSO LIKE')."
+            "description": "Liczba skoków w dół podczas próby odświeżenia pozycji na stronie galerii (gdy wykryto sekcję 'YOU MAY ALSO LIKE')."
         },
         "max_refresh": {
             "value": 2,
-            "description": "Maksymalna liczba pr\u00f3b od\u015bwie\u017cenia pozycji przewijania na jednej stronie, zanim skrypt uzna, \u017ce za\u0142adowano wszystkie elementy."
+            "description": "Maksymalna liczba prób odświeżenia pozycji przewijania na jednej stronie, zanim skrypt uzna, że załadowano wszystkie elementy."
         },
         "MAX_YMAL_CONSECUTIVE_CORRECTIONS": {
             "value": 2,
-            "description": "Maksymalna liczba kolejnych korekt pozycji przewijania w g\u00f3r\u0119, gdy skrypt wykryje sekcj\u0119 'YOU MAY ALSO LIKE' w widocznym obszarze."
+            "description": "Maksymalna liczba kolejnych korekt pozycji przewijania w górę, gdy skrypt wykryje sekcję 'YOU MAY ALSO LIKE' w widocznym obszarze."
         }
     },
     "downloading": {
         "download_delay_min": {
             "value": 0.8,
-            "description": "Minimalny czas (w sekundach) oczekiwania przed pobraniem ka\u017cdego kolejnego obrazka. Wprowadza losowe op\u00f3\u017anienie, aby unikn\u0105\u0107 blokady."
+            "description": "Minimalny czas (w sekundach) oczekiwania przed pobraniem każdego kolejnego obrazka. Wprowadza losowe opóźnienie, aby uniknąć blokady."
         },
         "download_delay_max": {
             "value": 1.6,
-            "description": "Maksymalny czas (w sekundach) oczekiwania przed pobraniem ka\u017cdego kolejnego obrazka."
+            "description": "Maksymalny czas (w sekundach) oczekiwania przed pobraniem każdego kolejnego obrazka."
         },
         "completion_tolerance_percent": {
             "value": 80,
-            "description": "Procent pobranych plik\u00f3w (np. 95.0), przy kt\u00f3rym galeria jest uznawana za 'uko\u0144czon\u0105 z tolerancj\u0105', nawet je\u015bli brakuje kilku plik\u00f3w."
+            "description": "Procent pobranych plików (np. 95.0), przy którym galeria jest uznawana za 'ukończoną z tolerancją', nawet jeśli brakuje kilku plików."
+        },
+        "max_consecutive_download_errors": {
+            "value": 5,
+            "description": "Maksymalna liczba błędów pobierania z rzędu w pustej galerii, po której zostanie ona oznaczona jako wyłączona."
         }
     },
     "pauses_and_rotation": {
         "gallery_pause": {
             "value": 5,
-            "description": "Pauza (w sekundach) po zako\u0144czeniu przetwarzania (pobierania) ca\u0142ej galerii, przed przej\u015bciem do nast\u0119pnej."
+            "description": "Pauza (w sekundach) po zakończeniu przetwarzania (pobierania) całej galerii, przed przejściem do następnej."
         },
         "GALLERY_PAUSE_THRESHOLD_MIN": {
             "value": 25,
-            "description": "Minimalna liczba przetworzonych galerii, po kt\u00f3rej mo\u017ce nast\u0105pi\u0107 rotacja po\u0142\u0105czenia VPN (je\u015bli jest skonfigurowana)."
+            "description": "Minimalna liczba przetworzonych galerii, po której może nastąpić rotacja połączenia VPN (jeśli jest skonfigurowana)."
         },
         "GALLERY_PAUSE_THRESHOLD_MAX": {
             "value": 35,
-            "description": "Maksymalna liczba przetworzonych galerii, po kt\u00f3rej mo\u017ce nast\u0105pi\u0107 rotacja po\u0142\u0105czenia VPN. Pr\u00f3g jest losowany z tego przedzia\u0142u."
+            "description": "Maksymalna liczba przetworzonych galerii, po której może nastąpić rotacja połączenia VPN. Próg jest losowany z tego przedziału."
         },
         "ai_worker_loop_delay": {
             "value": 2,
-            "description": "Op\u00f3\u017anienie (w sekundach) mi\u0119dzy kolejnymi cyklami sprawdzania zada\u0144 przez dedykowanego workera AI (testai_worker.py)."
+            "description": "Opóźnienie (w sekundach) między kolejnymi cyklami sprawdzania zadań przez dedykowanego workera AI (testai_worker.py)."
         }
     },
     "database": {
@@ -80,39 +84,39 @@
         },
         "user": {
             "value": "waifudownloader",
-            "description": "Nazwa u\u017cytkownika bazy danych."
+            "description": "Nazwa użytkownika bazy danych."
         },
         "password": {
             "value": "vfdsc34Ffgaa307",
-            "description": "Has\u0142o dla podanego u\u017cytkownika bazy danych."
+            "description": "Hasło dla podanego użytkownika bazy danych."
         },
         "database": {
             "value": "waifudownloader",
-            "description": "Nazwa bazy danych u\u017cywanej przez aplikacj\u0119."
+            "description": "Nazwa bazy danych używanej przez aplikację."
         },
         "port": {
             "value": 3306,
-            "description": "Port, na kt\u00f3rym nas\u0142uchuje serwer bazy danych (domy\u015blnie 3306)."
+            "description": "Port, na którym nasłuchuje serwer bazy danych (domyślnie 3306)."
         },
         "pool_size": {
             "value": 5,
-            "description": "Maksymalna liczba otwartych po\u0142\u0105cze\u0144 do bazy danych, utrzymywanych w puli przez skrypty Python."
+            "description": "Maksymalna liczba otwartych połączeń do bazy danych, utrzymywanych w puli przez skrypty Python."
         }
     },
     "paths": {
         "base_data_dir_name": {
             "value": "Modelki",
-            "description": "Nazwa g\u0142\u00f3wnego folderu, w kt\u00f3rym b\u0119d\u0105 zapisywane wszystkie pobrane galerie, posortowane wed\u0142ug nazw modelek."
+            "description": "Nazwa głównego folderu, w którym będą zapisywane wszystkie pobrane galerie, posortowane według nazw modelek."
         }
     },
     "ai_settings": {
         "api_base_url": {
             "value": "http://192.168.3.4:11434",
-            "description": "Pe\u0142ny adres URL serwera Ollama, u\u017cywany do generowania tytu\u0142\u00f3w galerii przez AI (np. 'http://localhost:11434')."
+            "description": "Pełny adres URL serwera Ollama, używany do generowania tytułów galerii przez AI (np. 'http://localhost:11434')."
         },
         "default_model_name": {
             "value": "llama3:latest",
-            "description": "Domy\u015blny model j\u0119zykowy Ollama (np. 'llama3:latest'), kt\u00f3ry b\u0119dzie u\u017cywany, je\u015bli nie zostanie okre\u015blony inny w konfiguracji konkretnego promptu w bazie danych."
+            "description": "Domyślny model językowy Ollama (np. 'llama3:latest'), który będzie używany, jeśli nie zostanie określony inny w konfiguracji konkretnego promptu w bazie danych."
         }
     }
 }
