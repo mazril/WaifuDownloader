@@ -5,17 +5,16 @@ require_once 'php_config.php';
 require_once 'php_utils.php';  
 
 // --- Global Initializations ---
-$pdo = get_db_connection(); // Ustanowienie połączenia PDO
-$active_tab = $_GET['tab'] ?? 'status_galleries'; // Domyślna aktywna zakładka
+$pdo = get_db_connection();
+$active_tab = $_GET['tab'] ?? 'status_galleries';
 
 // --- Zmienne dla Zakładki 1: "Przegląd Galerii" ---
 $aggregate_last_modified_timestamp = "Ładowanie...";
 
 // --- Zmienne dla Zakładki 2: "Testowanie Tytułów AI" ---
 $models_for_filter_tab2 = []; 
-$statuses_for_filter_tab2 = ['pending_check', 'pending_ai', 'pending_ai_test', 'partially_downloaded', 'downloaded_unknown_total', 'completed', 'completed_with_tolerance', 'error', 'error_ai', 'error_ai_test', 'test_completed', 'pending_initial_fetch_prod_ai', 'pending_initial_fetch_test_ai', 'error_ai_prod']; 
+$statuses_for_filter_tab2 = ['pending_check', 'pending_ai', 'pending_ai_test', 'partially_downloaded', 'downloaded_unknown_total', 'completed', 'completed_with_tolerance', 'error', 'error_ai', 'error_ai_test', 'test_completed', 'pending_initial_fetch_prod_ai', 'pending_initial_fetch_test_ai', 'error_ai_prod', 'disabled_bad_links']; 
 
-// --- Logika PHP dla Zakładki 2: Pobranie modeli do filtra ---
 if ($pdo) { 
     try {
         $stmt_models_filter_tab2 = $pdo->query("SELECT model_name FROM models ORDER BY model_name ASC");
@@ -38,34 +37,11 @@ if ($pdo) {
     <link rel="stylesheet" href="styles.css">
     <style>
         /* Dodatkowe style dla nowych elementów */
-        .global-ai-settings {
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 15px;
-            margin-top: 25px;
-            background-color: #f9f9f9;
-        }
-        .global-ai-settings h3 {
-            margin-top: 0;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 10px;
-        }
-        .global-ai-settings .form-group {
-            margin-bottom: 15px;
-        }
-        .global-ai-settings label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #555;
-        }
-        .global-ai-settings input[type="text"] {
-            width: 100%;
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid #ccc;
-            box-sizing: border-box; /* Ważne */
-        }
+        .global-ai-settings { border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-top: 25px; background-color: #f9f9f9; }
+        .global-ai-settings h3 { margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .global-ai-settings .form-group { margin-bottom: 15px; }
+        .global-ai-settings label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
+        .global-ai-settings input[type="text"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; }
     </style>
 </head>
 <body>
@@ -305,7 +281,7 @@ if ($pdo) {
         }
     }
 
-    // --- JS for Tab 1: Status Galleries (from status.php) ---
+    // --- JS for Tab 1: Status Galleries ---
     let statusTabInitialized = false;
     let statusPollingInterval = null;
     let aggregateRefreshTimeout = null;
@@ -637,9 +613,14 @@ if ($pdo) {
                                 let galleryLi = document.getElementById('gallery_li_' + galleryId);
                                 const escapedGalleryIdForJS = galleryId.replace(/'/g, "\\'");
                                 const escapedGalleryTitleForJS = (gData.title || galleryId).replace(/'/g, "\\'");
+                                
+                                const isDisabled = gData.is_disabled || false;
+                                const disabledClass = isDisabled ? 'disabled' : '';
+                                const toggleBtnClass = isDisabled ? 'disabled' : 'enabled';
+                                const toggleBtnText = isDisabled ? 'Włącz' : 'Wyłącz';
+
                                 if (!galleryLi) {
                                     galleryLi = document.createElement('li');
-                                    galleryLi.className = 'gallery-li';
                                     galleryLi.id = 'gallery_li_' + galleryId;
                                     galleryLi.innerHTML = `
                                         <span class="gallery-link">
@@ -652,6 +633,7 @@ if ($pdo) {
                                                 <div class="progress-bar"></div>
                                             </div>
                                             <span class="gallery-status"></span>
+                                            <button class="btn-action btn-toggle-disabled ${toggleBtnClass}" onclick="toggleGalleryDisabledStatus('${escapedGalleryIdForJS}')">${toggleBtnText}</button>
                                             <button class="btn-action btn-view-gallery" onclick="showGalleryFiles('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Pliki</button>
                                             <button class="btn-action completed-action" onclick="markGalleryAsCompleted('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Ukończ</button>
                                             <button class="btn-action" onclick="prioritizeItem('gallery', '${escapedGalleryIdForJS}')">Uzupełnij</button>
@@ -659,18 +641,15 @@ if ($pdo) {
                                         </div>
                                     `;
                                     nestedUl.appendChild(galleryLi);
-                                } else { 
-                                    const galleryButton = galleryLi.querySelector('.btn-view-gallery'); 
-                                    if(galleryButton) galleryButton.setAttribute('onclick', `showGalleryFiles('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')`);
-                                    const completedButton = galleryLi.querySelector('.completed-action');
-                                    if(completedButton) completedButton.setAttribute('onclick', `markGalleryAsCompleted('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')`);
                                 }
-                                updateGalleryUI(galleryId, gData.downloaded, gData.expected, null, gData.title, gData.url, gData.folder);
+                                
+                                galleryLi.className = `gallery-li ${disabledClass}`;
                                 if (galleryId === activeGalleryIdForUI && statusDiv && statusDiv.style.backgroundColor.includes('e0f7fa')) { 
                                      galleryLi.classList.add('processing');
                                 } else {
                                      galleryLi.classList.remove('processing');
                                 }
+                                updateGalleryUI(galleryId, gData.downloaded, gData.expected, null, gData.title, gData.url, gData.folder);
                             });
                              nestedUl.dataset.galleriesLoadedOnce = "true"; 
                         }
@@ -690,6 +669,27 @@ if ($pdo) {
                     statusDiv.style.backgroundColor = '#ffcdd2';
                  }
             });
+    }
+
+    function toggleGalleryDisabledStatus(galleryId) {
+        showGlobalToast(`Przełączanie statusu galerii ${galleryId}...`);
+        fetch(`${API_URL_INDEX}?action=toggle_gallery_disabled_status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gallery_id: galleryId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showGlobalToast(data.message || 'Status galerii zaktualizowany.');
+                fetchAggregateDataAndUpdateModels(false);
+            } else {
+                showGlobalToast(`Błąd: ${data.message || 'Nie udało się zaktualizować statusu.'}`, true);
+            }
+        })
+        .catch(error => {
+            showGlobalToast(`Błąd sieciowy: ${error.message}`, true);
+        });
     }
 
     function markGalleryAsCompleted(galleryId, galleryTitle) {
@@ -987,7 +987,7 @@ if ($pdo) {
         'pending_ai': 'AI (Prod)...', 'pending_ai_test': 'AI (Test)...',
         'pending_initial_fetch_test_ai': 'Pobieranie (Test AI)...', 'pending_initial_fetch_prod_ai': 'Pobieranie (Prod AI)...',
         'error_ai': 'Błąd AI (Prod)', 'error_ai_prod': 'Błąd AI (Prod)',
-        'error_ai_test': 'Błąd AI (Test)', 'test_completed': 'Test OK'
+        'error_ai_test': 'Błąd AI (Test)', 'test_completed': 'Test OK', 'disabled_bad_links': 'Wyłączona (złe linki)'
     };
     function setLoadingTestAi(isLoading, targetElement = tbodyTestAi, colSpan = 9) {
         if (targetElement) targetElement.innerHTML = isLoading ? `<tr><td colspan="${colSpan}" class="loader">Ładowanie...</td></tr>` : '';
