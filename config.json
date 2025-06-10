@@ -47,7 +47,7 @@
             "description": "Minimalny czas (w sekundach) oczekiwania przed pobraniem każdego kolejnego obrazka. Wprowadza losowe opóźnienie, aby uniknąć blokady."
         },
         "download_delay_max": {
-            "value": 1.6,
+            "value": 1.3,
             "description": "Maksymalny czas (w sekundach) oczekiwania przed pobraniem każdego kolejnego obrazka."
         },
         "completion_tolerance_percent": {
