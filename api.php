@@ -545,100 +545,57 @@ switch ($action) {
                 $old_path = $gallery_path_data['folder_path'];
                 api_log("API rename: Odczytana stara ścieżka: '$old_path'");
 
+                $model_sanitized = $gallery_path_data['model_sanitized_name'];
+                $new_gallery_sanitized = sanitize_foldername($new_title_rename);
+                $script_base_dir_for_data = defined('BASE_DATA_DIR') ? BASE_DATA_DIR : (__DIR__ . '/' . (defined('BASE_DATA_DIR_NAME') ? BASE_DATA_DIR_NAME : 'Modelki'));
+                $base_model_dir = rtrim($script_base_dir_for_data, '/') . '/' . $model_sanitized;
+                $final_new_path = rtrim($base_model_dir, '/') . '/' . $new_gallery_sanitized; 
+
                 if (empty($old_path)) {
-                    api_log("API rename: Brak folder_path w DB dla $gallery_id_rename. Tylko aktualizacja tytułu.");
+                    api_log("API rename: Brak folder_path w DB dla $gallery_id_rename. Tylko aktualizacja tytułu. Nowa ścieżka w DB to '$final_new_path'");
+                    $stmt_update_path_only = $pdo->prepare("UPDATE galleries SET folder_path = :new_path WHERE gallery_id = :gallery_id");
+                    $stmt_update_path_only->execute([':new_path' => $final_new_path, ':gallery_id' => $gallery_id_rename]);
                     $pdo->commit();
-                    api_log("Zakończono transakcję (commit) dla rename_gallery_folder (brak folder_path): $gallery_id_rename");
-                    $response = ['success' => true, 'message' => 'Tytuł zaktualizowany. Brak ścieżki folderu w bazie do zmiany nazwy (może nie został jeszcze utworzony).'];
+                    $response = ['success' => true, 'message' => 'Tytuł zaktualizowany. Brak ścieżki folderu w bazie do zmiany nazwy.', 'new_folder_path' => $final_new_path];
                     break;
                 }
                 
-                $old_path_exists_and_is_dir = is_dir($old_path);
-                api_log("API rename: Stara ścieżka '$old_path', istnieje i jest folderem: " . ($old_path_exists_and_is_dir ? 'Tak' : 'Nie'));
-
-                $model_sanitized = $gallery_path_data['model_sanitized_name'];
-                $new_gallery_sanitized = sanitize_foldername($new_title_rename);
-                
-                $script_base_dir_for_data = defined('BASE_DATA_DIR') ? BASE_DATA_DIR : (__DIR__ . '/' . (defined('BASE_DATA_DIR_NAME') ? BASE_DATA_DIR_NAME : 'Modelki'));
-
-                $base_model_dir = rtrim($script_base_dir_for_data, '/') . '/' . $model_sanitized;
-                api_log("API rename: Bazowy katalog modelki: '$base_model_dir'");
                 if (!is_dir($base_model_dir)) {
                     api_log("API rename: Katalog modelki '$base_model_dir' nie istnieje, próba utworzenia...");
                     if (!@mkdir($base_model_dir, 0775, true) && !is_dir($base_model_dir)) {
-                         api_log("API rename: Nie udało się utworzyć katalogu modelki '$base_model_dir'.");
                         throw new Exception("Katalog modelki ($base_model_dir) nie istnieje i nie można go utworzyć.");
                     }
-                    api_log("API rename: Utworzono katalog modelki: '$base_model_dir'");
                 }
                 
-                $new_path_candidate = rtrim($base_model_dir, '/') . '/' . $new_gallery_sanitized; 
-                $counter = 1;
-                $final_new_path = $new_path_candidate;
-
-                api_log("API rename: Kandydat na nową ścieżkę początkowo: '$final_new_path'");
-                while (file_exists($final_new_path) && (!$old_path_exists_and_is_dir || realpath($final_new_path) != realpath($old_path))) {
-                    $final_new_path = $new_path_candidate . '_' . $counter;
-                    api_log("API rename: Ścieżka '$final_new_path' (poprzednia z _X) zajęta, próba z _" . $counter);
-                    $counter++;
-                }
-                api_log("API rename: Ostateczna nowa ścieżka: '$final_new_path'");
-
-
-                if ($old_path_exists_and_is_dir && realpath($final_new_path) == realpath($old_path)) {
-                     api_log("API rename: Ścieżka bez zmian (realpath identyczny). Tylko aktualizacja tytułu.");
+                $old_path_exists_and_is_dir = is_dir($old_path);
+                
+                if ($old_path_exists_and_is_dir && realpath($old_path) == realpath($final_new_path)) {
                      $pdo->commit();
-                     api_log("Zakończono transakcję (commit) dla rename_gallery_folder (ścieżka bez zmian): $gallery_id_rename");
-                     $response = ['success' => true, 'message' => 'Tytuł zaktualizowany. Nazwa folderu bez zmian.'];
+                     $response = ['success' => true, 'message' => 'Tytuł zaktualizowany. Nazwa folderu bez zmian.', 'new_folder_path' => $final_new_path];
                 } elseif (!$old_path_exists_and_is_dir) {
-                    api_log("API rename: Stara ścieżka '$old_path' nie istnieje lub nie jest folderem. Aktualizuję tylko ścieżkę w DB na '$final_new_path'.");
                     $stmt_update_path_db = $pdo->prepare("UPDATE galleries SET folder_path = :new_path WHERE gallery_id = :gallery_id"); 
                     $stmt_update_path_db->execute([':new_path' => $final_new_path, ':gallery_id' => $gallery_id_rename]);
                     $pdo->commit();
-                    api_log("Zakończono transakcję (commit) dla rename_gallery_folder (stara ścieżka nie istniała): $gallery_id_rename");
-                    $response = ['success' => true, 'message' => "Tytuł zaktualizowany. Stary folder nie istniał. Zaktualizowano ścieżkę w DB do: " . basename($final_new_path)];
+                    $response = ['success' => true, 'message' => "Tytuł zaktualizowany. Stary folder nie istniał. Zaktualizowano ścieżkę w DB.", 'new_folder_path' => $final_new_path];
                 } else {
-                    api_log("API rename: Próba zmiany nazwy folderu na dysku z '$old_path' na '$final_new_path'");
                     if (@rename($old_path, $final_new_path)) {
-                        api_log("API rename: Zmiana nazwy folderu na dysku powiodła się.");
                         $stmt_update_path_db_after_rename = $pdo->prepare("UPDATE galleries SET folder_path = :new_path WHERE gallery_id = :gallery_id"); 
                         $stmt_update_path_db_after_rename->execute([':new_path' => $final_new_path, ':gallery_id' => $gallery_id_rename]);
                         $pdo->commit();
-                        api_log("Zakończono transakcję (commit) dla rename_gallery_folder (zmiana nazwy folderu OK): $gallery_id_rename");
-                        $response = ['success' => true, 'message' => "Tytuł i folder zmienione na: " . basename($final_new_path)];
+                        $response = ['success' => true, 'message' => "Tytuł i folder zmienione na: " . basename($final_new_path), 'new_folder_path' => $final_new_path];
                     } else {
                         $pdo->rollBack();
-                        api_log("Zakończono transakcję (rollback) dla rename_gallery_folder z powodu błędu zmiany nazwy folderu: $gallery_id_rename");
                         $error = error_get_last();
                         $err_msg = $error ? $error['message'] : 'Nieznany błąd zmiany nazwy folderu.';
-                        api_log("API rename: Błąd zmiany nazwy folderu na dysku: $err_msg");
-                        $response['message'] = "Tytuł zaktualizowany w DB, ale nie udało się zmienić nazwy folderu na dysku. Błąd: $err_msg. Przywrócono tytuł w DB.";
-                        $original_determined_title_before_attempt = $data_rename['original_determined_title_from_js'] ?? null;
-                        if ($original_determined_title_before_attempt !== null) {
-                            $stmt_revert_title = $pdo->prepare("UPDATE galleries SET determined_title = :original_dt WHERE gallery_id = :gid");
-                            $stmt_revert_title->execute([':original_dt' => $original_determined_title_before_attempt, ':gid' => $gallery_id_rename]);
-                            api_log("API rename: Przywrócono determined_title do wartości sprzed próby: '$original_determined_title_before_attempt'");
-                        } else {
-                             api_log("API rename: Nie udało się przywrócić determined_title - brak wartości oryginalnej.");
-                        }
+                        $response['message'] = "Nie udało się zmienić nazwy folderu na dysku. Błąd: $err_msg.";
                     }
                 }
             } catch (PDOException $e) {
-                if($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                    api_log("Zakończono transakcję (rollback) dla rename_gallery_folder z powodu PDOException: $gallery_id_rename. Błąd: " . $e->getMessage());
-                }
-                error_log("Błąd DB w rename_gallery_folder: " . $e->getMessage());
-                api_log("Błąd DB w rename_gallery_folder: " . $e->getMessage());
+                if($pdo->inTransaction()) { $pdo->rollBack(); }
                 $response['message'] = "Błąd bazy danych: " . $e->getMessage();
                 http_response_code(500);
             } catch (Exception $e) {
-                 if($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                    api_log("Zakończono transakcję (rollback) dla rename_gallery_folder z powodu Exception: $gallery_id_rename. Błąd: " . $e->getMessage());
-                 }
-                error_log("Błąd w rename_gallery_folder: " . $e->getMessage());
-                api_log("Błąd w rename_gallery_folder: " . $e->getMessage());
+                 if($pdo->inTransaction()) { $pdo->rollBack(); }
                 $response['message'] = "Błąd serwera: " . $e->getMessage();
                 http_response_code(500);
             }
