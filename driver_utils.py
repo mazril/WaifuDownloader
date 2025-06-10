@@ -247,8 +247,12 @@ def safe_driver_get(driver, url, shutdown_flag_func=None):
         driver.get(url)
         
         try:
-            driver.execute_script("document.body.style.zoom='25%'")
-            logger.info("Ustawiono zoom strony na 25%.")
+            if "/model/" in url:
+                driver.execute_script("document.body.style.zoom='100%'")
+                logger.info("Ustawiono zoom strony na 100% (strona modelki).")
+            else:
+                driver.execute_script("document.body.style.zoom='25%'")
+                logger.info("Ustawiono zoom strony na 25% (strona galerii lub inna).")
         except Exception as e_zoom:
             logger.warning(f"Nie udało się ustawić zoomu strony: {e_zoom}")
 
