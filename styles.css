@@ -916,3 +916,67 @@ a:hover {
     margin-bottom: 15px;
     border-radius: 4px;
 }
+.gallery-li {
+    margin-bottom: 4px;
+    border-bottom: 1px solid #f1f3f5;
+    padding: 6px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background-color 0.3s, opacity 0.3s;
+}
+
+.gallery-li.processing {
+    background-color: #e0f7fa !important;
+}
+
+/* Nowe style dla wyłączonych galerii */
+.gallery-li.disabled {
+    opacity: 0.6;
+    background-color: #f5f5f5;
+}
+
+.gallery-li.disabled .gallery-link a {
+    text-decoration: line-through;
+    color: #999;
+}
+
+.gallery-link {
+    flex-grow: 1;
+    margin-right: 10px;
+    font-size: 0.95em;
+    display: flex;
+    align-items: center;
+}
+
+/* ... istniejące style ... */
+
+.btn-action:hover {
+    background-color: #e2e6ea;
+    text-decoration: none;
+    color: #212529;
+}
+
+/* Nowe style dla przycisku włącz/wyłącz */
+.btn-action.btn-toggle-disabled.enabled {
+    background-color: #d9534f; /* Czerwony - akcja to "Wyłącz" */
+    color: white;
+    border-color: #d43f3a;
+}
+.btn-action.btn-toggle-disabled.enabled:hover {
+    background-color: #c9302c;
+}
+.btn-action.btn-toggle-disabled.disabled {
+    background-color: #5cb85c; /* Zielony - akcja to "Włącz" */
+    color: white;
+    border-color: #4cae4c;
+}
+.btn-action.btn-toggle-disabled.disabled:hover {
+    background-color: #449d44;
+}
+
+.btn-action.completed-action {
+    background-color: #28a745;
+    color: white;
+    border-color: #1e7e34;
+}
