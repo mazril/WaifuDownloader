@@ -28,25 +28,22 @@ function api_log($message) {
 
 $action = $_GET['action'] ?? $_POST['action'] ?? null;
 $response = ['success' => false, 'message' => 'Nieznana akcja lub brak akcji.'];
-$pdo = get_db_connection(); // Inicjalizacja połączenia PDO
+$pdo = get_db_connection();
 
-// Sprawdzenie połączenia PDO dla akcji innych niż te, które go nie wymagają
 if (!$pdo && !in_array($action, ['get_status', 'get_global_ai_settings', 'save_global_ai_settings'])) {
-    http_response_code(503); // Service Unavailable
+    http_response_code(503); 
     $response['message'] = 'Błąd serwera: Nie można połączyć się z bazą danych.';
     api_log("Krytyczny błąd: Brak połączenia PDO. Akcja: " . var_export($action, true));
     echo json_encode($response);
     exit();
 }
 
-// Logowanie danych żądania
 $raw_post_data = file_get_contents('php://input');
-// Rozszerzone logowanie dla akcji POST z danymi
 if (
     ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($raw_post_data)) &&
     (
         !in_array($action, ['get_status', 'get_aggregate', 'get_queue']) ||
-        in_array($action, ['mark_gallery_completed', 'trigger_ai_test_run', 'trigger_ai_update', 'save_ai_prompt_config', 'rename_gallery_folder', 'update_queue', 'promote_test_to_production', 'save_global_ai_settings'])
+        in_array($action, ['mark_gallery_completed', 'trigger_ai_test_run', 'trigger_ai_update', 'save_ai_prompt_config', 'rename_gallery_folder', 'update_queue', 'promote_test_to_production', 'save_global_ai_settings', 'toggle_gallery_disabled_status'])
     )
 ) {
     api_log("Akcja: " . var_export($action, true) . ", GET: " . json_encode($_GET) . ", POST_RAW: " . $raw_post_data);
@@ -60,8 +57,7 @@ switch ($action) {
         $status_data = get_app_state_db('current_status');
         if ($status_data && is_array($status_data)) {
             $defaults = [
-                "timestamp" => date("Y-m-d H:i:s"),
-                "message" => "Brak danych statusu.",
+                "timestamp" => date("Y-m-d H:i:s"), "message" => "Brak danych statusu.",
                 "current_model" => "", "current_gallery_title" => "", "current_gallery_id" => null,
                 "current_download_count" => null, "scan_session_found_count" => null,
                 "current_expected_count" => null, "is_processing" => false
@@ -69,8 +65,7 @@ switch ($action) {
             $response = array_merge($defaults, $status_data);
         } else {
             $response = [
-                "timestamp" => date("Y-m-d H:i:s"),
-                "message" => "Oczekiwanie na pierwszy status ze skryptu Python (DB)...",
+                "timestamp" => date("Y-m-d H:i:s"), "message" => "Oczekiwanie na pierwszy status ze skryptu Python (DB)...",
                 "current_model" => "", "current_gallery_title" => "", "current_gallery_id" => null,
                 "current_download_count" => null, "scan_session_found_count" => null,
                 "current_expected_count" => null, "is_processing" => false
@@ -93,17 +88,14 @@ switch ($action) {
             foreach ($models_from_db as $model_row) {
                 $model_name_original = $model_row['model_name'];
                 $aggregate_data['models'][$model_name_original] = [
-                    'galleries' => [],
-                    'sanitized_name' => $model_row['sanitized_name'],
-                    'total_galleries' => 0,
-                    'completed_galleries' => 0,
-                    'model_progress' => 0
+                    'galleries' => [], 'sanitized_name' => $model_row['sanitized_name'],
+                    'total_galleries' => 0, 'completed_galleries' => 0, 'model_progress' => 0
                 ];
             }
             
             $all_galleries_stmt = $pdo->query("
                 SELECT g.gallery_id, g.model_id, g.url, g.original_title, g.determined_title, 
-                       g.folder_path, g.expected_count, g.downloaded_count, g.status,
+                       g.folder_path, g.expected_count, g.downloaded_count, g.status, g.is_disabled,
                        m.model_name AS model_name_from_join, m.sanitized_name AS model_sanitized_name_from_join
                 FROM galleries g
                 JOIN models m ON g.model_id = m.model_id
@@ -117,11 +109,8 @@ switch ($action) {
                 if (!isset($aggregate_data['models'][$model_name_for_gallery])) {
                     $sani_name = $gallery_row['model_sanitized_name_from_join'] ?: sanitize_foldername($model_name_for_gallery);
                     $aggregate_data['models'][$model_name_for_gallery] = [
-                        'galleries' => [],
-                        'sanitized_name' => $sani_name,
-                        'total_galleries' => 0,
-                        'completed_galleries' => 0,
-                        'model_progress' => 0
+                        'galleries' => [], 'sanitized_name' => $sani_name,
+                        'total_galleries' => 0, 'completed_galleries' => 0, 'model_progress' => 0
                     ];
                 }
 
@@ -138,13 +127,10 @@ switch ($action) {
                 $aggregate_data['models'][$model_name_for_gallery]['galleries'][$gallery_row['gallery_id']] = [
                     'title' => $gallery_row['determined_title'] ?: $gallery_row['original_title'] ?: $gallery_row['gallery_id'],
                     'folder' => $gallery_row['folder_path'],
-                    'expected' => $expected,
-                    'downloaded' => $downloaded,
-                    'url' => $gallery_row['url'],
-                    'status_color' => $status_color,
-                    'completed' => $is_complete_status,
-                    'model_name' => $model_name_for_gallery,
-                    'gallery_id' => $gallery_row['gallery_id']
+                    'expected' => $expected, 'downloaded' => $downloaded, 'url' => $gallery_row['url'],
+                    'status_color' => $status_color, 'completed' => $is_complete_status,
+                    'model_name' => $model_name_for_gallery, 'gallery_id' => $gallery_row['gallery_id'],
+                    'is_disabled' => (bool)$gallery_row['is_disabled']
                 ];
             }
 
@@ -1064,7 +1050,7 @@ switch ($action) {
             $response['message'] = 'Metoda niedozwolona (wymagany POST).';
         }
         break;
-
+        
     default:
         http_response_code(400);
         if(isset($action) && !empty($action)){ 
