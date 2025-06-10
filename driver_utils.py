@@ -75,13 +75,14 @@ def _create_driver_instance_for_thread(q_result, adblock_path_local):
         _ = driver.current_url 
         logger.info("Przeglądarka responsywna.")
 
-        # --- NOWA, JAWNA MAKSYMALIZACJA OKNA ---
+        logger.info("Krótka pauza (1s) na stabilizację okna przeglądarki...")
+        time.sleep(1)
+
         try:
             logger.info("Maksymalizacja okna przeglądarki...")
             driver.maximize_window()
         except Exception as e_max:
             logger.warning(f"Nie udało się jawnie zmaksymalizować okna: {e_max}")
-        # --- KONIEC NOWEJ LOGIKI ---
 
         if adblock_loaded_successfully:
             logger.info("Czekam na załadowanie AdBlocka (5s)...")
