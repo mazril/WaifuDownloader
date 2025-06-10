@@ -18,7 +18,6 @@ import utils
 import db_manager
 import driver_utils
 import reporting
-# Import funkcji pobierającej z data_manager
 from data_manager import download_gallery as dm_download_gallery 
 
 logger = logging.getLogger(__name__)
@@ -248,16 +247,17 @@ def _refresh_galleries_data_for_model(driver, model_name_original, shutdown_flag
 def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_input,
                            shutdown_flag_func=None):
     """
-    Kompleksowo przetwarza pojedynczą galerię, zapisując stany pośrednie do DB.
-    
+    Przetwarza pojedynczą galerię: pobiera dane, linki, zleca AI, pobiera pliki.
+
     Opis modyfikacji:
-    - Usunięto całkowicie zależność od słownika w pamięci.
-    - Po zebraniu linków do obrazków, są one od razu zapisywane do bazy danych
-      w kolumnie `image_links_json`, a flaga `links_collected` jest ustawiana na True.
-    - Przed pobieraniem, linki są odczytywane z bazy danych.
-    - Funkcja zachowuje swoje asynchroniczne zachowanie - po zleceniu zadania AI
-      kończy pracę dla danej galerii, pozwalając `handle_process_models` na
-      dalsze zarządzanie przepływem.
+    - Po wywołaniu `dm_download_gallery`, sprawdza nową flagę `was_disabled`.
+    - Jeśli flaga jest `True`, aktualizuje galerię w bazie, ustawiając
+      `is_disabled = True` i status na `disabled_bad_links`, po czym kończy pracę.
+    - Standardowa logika aktualizacji statusu po pobraniu jest wykonywana
+      tylko wtedy, gdy galeria nie została wyłączona.
+
+    Wpływ na inne funkcje:
+    - Kluczowa funkcja integrująca nową logikę wyłączania galerii.
     """
     logger.info(f"PSG_START ({gallery_id_input}): Rozpoczynam przetwarzanie.")
     config_handler.load_config()
@@ -266,6 +266,10 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
     if not gallery_entry_db:
         logger.error(f"PSG_ERROR ({gallery_id_input}): Nie udało się pobrać danych galerii z DB! Pomijam.")
         return False
+
+    if gallery_entry_db.get('is_disabled'):
+        logger.info(f"PSG ({gallery_id_input}): Galeria jest oznaczona jako wyłączona. Pomijam.")
+        return True
 
     model_name_from_db = gallery_entry_db.get('model_name', model_name_original)
     sanitized_model_name = gallery_entry_db.get('sanitized_name') or utils.sanitize_foldername(model_name_from_db)
@@ -319,13 +323,12 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
                 'image_links_json': json.dumps(hrefs),
                 'links_collected': True
             }
-            # Aktualizuj expected_count, jeśli znaleziono więcej niż w DB
             if gallery_entry_db.get('expected_count') is None or len(hrefs) > gallery_entry_db.get('expected_count'):
                 updates['expected_count'] = len(hrefs)
             
             db_manager.update_gallery(gallery_id_input, **updates)
             logger.info(f"PSG ({gallery_id_input}): Zebrano i zapisano w DB {len(hrefs)} linków.")
-            gallery_entry_db = db_manager.get_gallery(gallery_id_input) # Odśwież dane
+            gallery_entry_db = db_manager.get_gallery(gallery_id_input) 
 
         # Krok 4: Sprawdzenie, czy można już pobierać
         title_is_ready = gallery_entry_db.get('determined_title')
@@ -334,7 +337,7 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
         if not title_is_ready:
             logger.info(f"PSG ({gallery_id_input}): Tytuł od AI nie jest jeszcze gotowy. Kończę cykl dla tej galerii.")
             reporting.update_current_status("Oczekuje na AI...", model=model_name_from_db, gallery=title_for_reporting, gallery_id=gallery_id_input, is_processing=True)
-            return True # Zwróć sukces, zadanie przygotowawcze wykonane
+            return True 
 
         if not links_are_ready:
             logger.error(f"PSG ({gallery_id_input}): Błąd logiczny - dotarto do etapu pobierania, ale linki nie są zebrane.")
@@ -347,7 +350,6 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
         os.makedirs(model_base_data_dir, exist_ok=True)
 
         final_gallery_folder_path = os.path.join(model_base_data_dir, sanitized_folder_base)
-        # (Logika unikania kolizji nazw folderów - uproszczona, można rozbudować w razie potrzeby)
         if os.path.exists(final_gallery_folder_path) and not gallery_entry_db.get('folder_path'):
             final_gallery_folder_path = f"{final_gallery_folder_path}_{gallery_id_input}"
         
@@ -356,23 +358,26 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
             db_manager.update_gallery(gallery_id_input, folder_path=final_gallery_folder_path)
 
         logger.info(f"PSG ({gallery_id_input}): Folder galerii ustawiony na: {final_gallery_folder_path}")
-
         image_links_to_download = json.loads(gallery_entry_db.get('image_links_json'))
         
-        download_counts = dm_download_gallery(
+        download_result = dm_download_gallery(
             driver, gallery_url, final_gallery_folder_path, gallery_id_input, model_name_from_db,
             shutdown_flag_func=shutdown_flag_func,
             prefetched_image_urls=image_links_to_download
         )
         
-        # Aktualizacja statusu po pobieraniu
+        # Krok 6: Aktualizacja statusu po pobieraniu
+        if download_result.get('was_disabled'):
+            logger.info(f"PSG ({gallery_id_input}): Galeria oznaczona do wyłączenia. Aktualizuję DB.")
+            db_manager.update_gallery(gallery_id_input, is_disabled=True, status='disabled_bad_links')
+            return True 
+
         gallery_after_download = db_manager.get_gallery(gallery_id_input)
-        downloaded_final = download_counts.get('downloaded_count', 0)
-        expected_final = download_counts.get('expected_count', gallery_after_download.get('expected_count'))
+        downloaded_final = download_result.get('downloaded_count', 0)
+        expected_final = download_result.get('expected_count', gallery_after_download.get('expected_count'))
         
         new_status = 'error'
-        tolerance_percent_cfg = config_handler.current_config.get('downloading', {}).get('completion_tolerance_percent', {})
-        tolerance_percent = tolerance_percent_cfg.get('value', 95.0)
+        tolerance_percent = config_handler.current_config['downloading']['completion_tolerance_percent']['value']
         
         if expected_final is not None:
             if downloaded_final >= expected_final and expected_final > 0:
@@ -418,23 +423,16 @@ def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None):
     rre_occurred_hpi = False
 
     try:
-        # Logika dla zadań AI (re_analyze) pozostaje bez zmian
-        if item_type == "re_analyze_gallery" or item_type == "re_analyze_gallery_test":
-            gallery_id = payload.get("id")
-            if gallery_id:
-                # Ta część deleguje zadanie do workera AI, jest OK
-                pass
-            return True
-
-        if driver_instance and driver_utils.is_driver_responsive(driver_instance):
-            driver_hpi = driver_instance
-        elif item_type in ["gallery", "scan_model", "scan_model_refresh_only"]:
-            driver_hpi = driver_utils.create_driver_with_retry(shutdown_flag_func=shutdown_flag_func)
-            created_driver_in_hpi = True
+        if item_type in ["gallery", "scan_model", "scan_model_refresh_only"]:
+            if driver_instance and driver_utils.is_driver_responsive(driver_instance):
+                driver_hpi = driver_instance
+            else:
+                driver_hpi = driver_utils.create_driver_with_retry(shutdown_flag_func=shutdown_flag_func)
+                created_driver_in_hpi = True
         
-        if not driver_hpi and item_type in ["gallery", "scan_model", "scan_model_refresh_only"]:
-             logger.error(f"HPI Error ({item_display_info}): Nie udało się uzyskać drivera dla {item_type}. Pomijam.")
-             return True 
+            if not driver_hpi:
+                 logger.error(f"HPI Error ({item_display_info}): Nie udało się uzyskać drivera dla {item_type}. Pomijam.")
+                 return True 
 
         if item_type == "scan_model":
             model_name_to_scan = str(payload)
@@ -451,10 +449,8 @@ def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None):
             reporting.update_current_status(f"Zakończono {status_msg} dla {model_name_to_scan}", model=model_name_to_scan, is_processing=False)
 
         elif item_type == "gallery":
-            # ... logika dla galerii pozostaje podobna, ale bez przekazywania `collected_gallery_image_links_ref`
             gallery_id, model_name = payload.get("id"), payload.get("model_name")
             gallery_url_from_payload = payload.get("url")
-            #...
             process_single_gallery(driver_hpi, model_name, gallery_url_from_payload, gallery_id,
                                    shutdown_flag_func=shutdown_flag_func)
         else:
@@ -486,10 +482,6 @@ def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None):
 
 def handle_process_models(start_model_index=0, check_mode="all_or_incomplete", 
                           shutdown_flag_func=None):
-    """
-    Główna funkcja orkiestrująca przetwarzanie. Została uproszczona, aby
-    uwzględnić nową, bardziej responsywną logikę sprawdzania.
-    """
     models_db = db_manager.execute_query("SELECT model_id, model_name FROM models ORDER BY model_name ASC", fetch_all=True)
     all_models = models_db if models_db else []
 
@@ -520,26 +512,22 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
 
             if _is_shutdown_requested_processing(shutdown_flag_func): break
             
-            # --- Przetwarzanie priorytetów przed modelem ---
-            # ... (ta sekcja pozostaje bez zmian)
+            # ... logika przetwarzania priorytetów bez zmian ...
 
             logger.info(f"=== PRZETWARZANIE MODELKI: {model_name} ({current_global_idx + 1}/{len(all_models)}) ===")
             reporting.update_current_status(f"Przetwarzanie ({check_mode})", model=model_name, is_processing=True)
             
-            # --- Skanowanie w poszukiwaniu nowych galerii ---
-            # ... (ta sekcja pozostaje bez zmian)
+            _scan_new_model_page(driver, model_name, shutdown_flag_func=shutdown_flag_func)
+            if check_mode != 'only_new_or_count_changed':
+                 _refresh_galleries_data_for_model(driver, model_name, shutdown_flag_func=shutdown_flag_func)
 
-            # --- Pętla główna: Skanowanie i Pobieranie ---
             galleries_for_model_processing = db_manager.get_model_galleries_for_processing(model_id_db, check_mode)
             
             for gal_data_item in galleries_for_model_processing:
                 if _is_shutdown_requested_processing(shutdown_flag_func): break
-                
-                # Przetwarzanie inicjalne (skanowanie, zlecanie AI)
                 process_single_gallery(driver, model_name, gal_data_item['url'], gal_data_item['gallery_id'], shutdown_flag_func=shutdown_flag_func)
                 processed_galleries_this_run.add(gal_data_item['gallery_id'])
-
-                # Sprawdzenie i pobranie gotowych galerii po każdej operacji
+                
                 ready_to_download = db_manager.get_ready_to_download_galleries_for_model(model_id_db)
                 for ready_gal in ready_to_download:
                     if ready_gal['gallery_id'] not in processed_galleries_this_run:
@@ -547,7 +535,6 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
                         process_single_gallery(driver, model_name, ready_gal['url'], ready_gal['gallery_id'], shutdown_flag_func=shutdown_flag_func)
                         processed_galleries_this_run.add(ready_gal['gallery_id'])
 
-            # Końcowe sprawdzenie dla modelu
             logger.info(f"HPM: Końcowe sprawdzanie gotowych galerii dla '{model_name}'.")
             final_check = db_manager.get_ready_to_download_galleries_for_model(model_id_db)
             for ready_gal in final_check:
@@ -556,8 +543,8 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
                     processed_galleries_this_run.add(ready_gal['gallery_id'])
 
             logger.info(f"--- HPM: Zakończono model: {model_name} ---")
-        
-        # ... (reszta funkcji pozostaje bez zmian)
+            
+        # ... reszta funkcji bez zmian ...
 
     except constants.RestartRequiredError as rre_hpm: 
         last_error = rre_hpm
