@@ -175,9 +175,10 @@ def _scan_new_model_page(driver, model_name_original, shutdown_flag_func=None):
     except constants.RestartRequiredError: raise
     except Exception as e: logger.exception(f"Krytyczny błąd skanowania strony modelki {model_name_original}: {e}")
 
-
+# Przywrócono funkcję, ale nie jest ona już wywoływana z głównej pętli przetwarzania.
+# Pozostaje jako narzędzie, które może być wywołane w innych celach (np. z interfejsu, dla testów).
 def _refresh_galleries_data_for_model(driver, model_name_original, shutdown_flag_func=None):
-    logger.info(f"Rozpoczynam odświeżanie danych wewnątrz galerii dla modelki: {model_name_original}")
+    logger.info(f"Rozpoczynam odświeżanie danych wewnątrz galerii dla modelki: {model_name_original} (FUNKCJA LEGACY)")
     model_id = db_manager.get_or_create_model(model_name_original)
     if not model_id:
         logger.error(f"Nie udało się uzyskać ID dla modelki {model_name_original}. Przerywam odświeżanie.")
@@ -243,27 +244,20 @@ def _refresh_galleries_data_for_model(driver, model_name_original, shutdown_flag
             
     logger.info(f"Zakończono odświeżanie danych wewnątrz galerii dla {model_name_original}.")
 
-
 def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_input,
                            shutdown_flag_func=None):
     """
     Przetwarza pojedynczą galerię: pobiera dane, linki, zleca AI, czeka na tytuł, pobiera pliki.
 
     Opis modyfikacji:
-    - Zmieniono logikę, aby po zebraniu linków, jeśli tytuł od AI nie jest gotowy,
-      skrypt czekał przez `ai_title_wait_timeout` sekund (z config.json) i
-      sprawdzał ponownie.
-    - Dopiero po tym oczekiwaniu, jeśli tytuł wciąż jest niedostępny, przechodzi do
-      następnej galerii.
-    - Jeśli tytuł jest dostępny (od razu lub po oczekiwaniu), natychmiast
-      przystępuje do pobierania plików.
-    - Po wywołaniu `dm_download_gallery`, sprawdza nową flagę `was_disabled`.
-    - Jeśli flaga jest `True`, aktualizuje galerię w bazie, ustawiając
-      `is_disabled = True` i status na `disabled_bad_links`, po czym kończy pracę.
+    - Funkcja ta jest teraz jedynym punktem wejścia do przetwarzania galerii.
+    - Wewnętrznie sprawdza, czy `initial_data_fetched` jest fałszem i jeśli tak,
+      pobiera dane (opis, tagi) przed przejściem do kolejnych kroków.
+    - Logika oczekiwania na tytuł AI i pobierania plików pozostaje bez zmian.
 
     Wpływ na inne funkcje:
-    - Kluczowa funkcja integrująca nową logikę. Zapewnia, że nowo odkryte
-      galerie są od razu pobierane, jeśli to możliwe, zamiast czekać na kolejny cykl.
+    - Zastępuje całkowicie potrzebę istnienia funkcji `_refresh_galleries_data_for_model`,
+      unifikując logikę przetwarzania i rozwiązując problem "grazera".
     """
     logger.info(f"PSG_START ({gallery_id_input}): Rozpoczynam przetwarzanie.")
     config_handler.load_config()
@@ -301,13 +295,13 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
             if cosplay_tags_list or fandom_tags_list: updates['tags_json'] = json.dumps({"cosplay": cosplay_tags_list, "fandom": fandom_tags_list})
             
             db_manager.update_gallery(gallery_id_input, **updates)
-            gallery_entry_db = db_manager.get_gallery(gallery_id_input)
+            gallery_entry_db = db_manager.get_gallery(gallery_id_input) # Odśwież dane po aktualizacji
         
         # Krok 2: Zlecenie zadania dla AI, jeśli brakuje tytułu
         if not gallery_entry_db.get('determined_title') and gallery_entry_db.get('status') != 'pending_production_ai':
             logger.info(f"PSG ({gallery_id_input}): Brak 'determined_title'. Ustawiam status 'pending_production_ai'.")
             db_manager.update_gallery(gallery_id_input, status='pending_production_ai')
-            gallery_entry_db = db_manager.get_gallery(gallery_id_input)
+            gallery_entry_db = db_manager.get_gallery(gallery_id_input) # Odśwież
         
         # Krok 3: Zbieranie linków, jeśli ich brakuje
         if not gallery_entry_db.get('links_collected'):
@@ -330,7 +324,7 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
             
             db_manager.update_gallery(gallery_id_input, **updates)
             logger.info(f"PSG ({gallery_id_input}): Zebrano i zapisano w DB {len(hrefs)} linków.")
-            gallery_entry_db = db_manager.get_gallery(gallery_id_input)
+            gallery_entry_db = db_manager.get_gallery(gallery_id_input) # Odśwież
 
         # Krok 4: Sprawdzenie tytułu AI z ewentualnym oczekiwaniem
         title_is_ready = gallery_entry_db.get('determined_title')
@@ -341,7 +335,7 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
             time.sleep(wait_timeout)
             
             logger.info(f"PSG ({gallery_id_input}): Ponowne sprawdzanie tytułu w DB po oczekiwaniu.")
-            gallery_entry_db = db_manager.get_gallery(gallery_id_input)
+            gallery_entry_db = db_manager.get_gallery(gallery_id_input) # Kluczowe odświeżenie
             title_is_ready = gallery_entry_db.get('determined_title')
 
         if not title_is_ready:
@@ -444,6 +438,13 @@ def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None):
             status_msg = "Priorytet: Skanowanie i uzupełnianie modelu"
             reporting.update_current_status(status_msg, model=model_name_to_scan, is_processing=True)
             _scan_new_model_page(driver_hpi, model_name_to_scan, shutdown_flag_func=shutdown_flag_func)
+            
+            # Po skanie, od razu przetwarzamy znalezione galerie
+            galleries_to_process = db_manager.get_model_galleries_for_processing(db_manager.get_or_create_model(model_name_to_scan), "all_or_incomplete")
+            for gal in galleries_to_process:
+                if _is_shutdown_requested_processing(shutdown_flag_func): break
+                process_single_gallery(driver_hpi, model_name_to_scan, gal['url'], gal['gallery_id'], shutdown_flag_func=shutdown_flag_func)
+
             reporting.update_current_status(f"Zakończono {status_msg} dla {model_name_to_scan}", model=model_name_to_scan, is_processing=False)
 
         elif item_type == "scan_model_refresh_only":
@@ -491,17 +492,14 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
     Główna funkcja orkiestrująca przetwarzanie modeli i ich galerii.
 
     Opis modyfikacji:
-    - Dodano zbiór `processed_galleries_this_run` do śledzenia już przetworzonych galerii.
-    - Po przetworzeniu galerii w głównej pętli (`galleries_for_model_processing`),
-      natychmiast wywoływana jest nowa funkcja `get_ready_to_download_galleries_for_model`,
-      aby sprawdzić, czy inne galerie tego samego modelu są gotowe do pobrania.
-    - Jeśli tak, są one natychmiast przetwarzane przez `process_single_gallery`.
-    - Dodano końcowe sprawdzenie gotowych galerii po zakończeniu pętli dla danego modelu.
+    - Usunięto wywołanie `_refresh_galleries_data_for_model` z tej pętli.
+    - Główny cykl pracy teraz polega na skanowaniu nowości (`_scan_new_model_page`),
+      a następnie pobieraniu listy wszystkich galerii wymagających pracy i
+      wywoływaniu dla każdej z nich uniwersalnej funkcji `process_single_gallery`.
 
     Wpływ na inne funkcje:
-    - Zmienia sekwencyjny charakter pętli na bardziej "oportunistyczny",
-      co pozwala na natychmiastowe pobieranie gotowych galerii, zamiast czekać na
-      kolejną iterację po wszystkich modelach.
+    - Upraszcza logikę i rozwiązuje problem "grazera", zapewniając, że
+      każda galeria jest przetwarzana kompleksowo w jednym podejściu.
     """
     models_db = db_manager.execute_query("SELECT model_id, model_name FROM models ORDER BY model_name ASC", fetch_all=True)
     all_models = models_db if models_db else []
@@ -515,10 +513,7 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
     all_model_names = [m['model_name'] for m in all_models]
     if 0 < start_model_index < len(all_models): models_to_process = all_models[start_model_index:]
     
-    driver, galleries_processed_since_vpn = None, 0
-    config_handler.load_config()
-    vpn_cfg = config_handler.current_config['pauses_and_rotation']
-    vpn_threshold = random.randint(vpn_cfg['GALLERY_PAUSE_THRESHOLD_MIN']['value'], vpn_cfg['GALLERY_PAUSE_THRESHOLD_MAX']['value'])
+    driver = None
     operation_should_stop, last_error = False, None
     try:
         driver = driver_utils.create_driver_with_retry(shutdown_flag_func=shutdown_flag_func)
@@ -536,18 +531,22 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
             logger.info(f"=== PRZETWARZANIE MODELKI: {model_name} ({current_global_idx + 1}/{len(all_models)}) ===")
             reporting.update_current_status(f"Przetwarzanie ({check_mode})", model=model_name, is_processing=True)
             
+            # Krok 1: Skanowanie strony modelki w poszukiwaniu nowych/zaktualizowanych galerii
             _scan_new_model_page(driver, model_name, shutdown_flag_func=shutdown_flag_func)
-            if check_mode != 'only_new_or_count_changed':
-                 _refresh_galleries_data_for_model(driver, model_name, shutdown_flag_func=shutdown_flag_func)
-
+            
+            # Krok 2: Pobranie listy WSZYSTKICH galerii dla modelu, które wymagają jakiejkolwiek pracy
             galleries_for_model_processing = db_manager.get_model_galleries_for_processing(model_id_db, check_mode)
             
             for gal_data_item in galleries_for_model_processing:
                 if _is_shutdown_requested_processing(shutdown_flag_func): break
+                
+                if gal_data_item['gallery_id'] in processed_galleries_this_run: continue
+
+                # Przetwarzamy galerię kompleksowo
                 process_single_gallery(driver, model_name, gal_data_item['url'], gal_data_item['gallery_id'], shutdown_flag_func=shutdown_flag_func)
                 processed_galleries_this_run.add(gal_data_item['gallery_id'])
                 
-                # Sprawdzenie gotowych do pobrania galerii po każdej operacji
+                # Sprawdzenie "oportunistyczne", czy inne galerie stały się gotowe w międzyczasie
                 ready_to_download = db_manager.get_ready_to_download_galleries_for_model(model_id_db)
                 for ready_gal in ready_to_download:
                     if ready_gal['gallery_id'] not in processed_galleries_this_run:
@@ -555,7 +554,7 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
                         process_single_gallery(driver, model_name, ready_gal['url'], ready_gal['gallery_id'], shutdown_flag_func=shutdown_flag_func)
                         processed_galleries_this_run.add(ready_gal['gallery_id'])
 
-            # Końcowe sprawdzenie gotowych galerii dla modelu
+            # Końcowe sprawdzenie gotowych galerii dla modelu po zakończeniu głównej pętli
             logger.info(f"HPM: Końcowe sprawdzanie gotowych galerii dla '{model_name}'.")
             final_check = db_manager.get_ready_to_download_galleries_for_model(model_id_db)
             for ready_gal in final_check:
