@@ -14,6 +14,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
+// Definicja stałej dla limitu miniaturek
+define('THUMBNAIL_LIMIT', 10);
+
 // Funkcja logująca żądania API
 function api_log($message) {
     $log_file = __DIR__ . '/api_debug.txt'; // Upewnij się, że ten plik jest zapisywalny przez serwer WWW
@@ -123,6 +126,26 @@ switch ($action) {
                 $expected = $gallery_row['expected_count'];
                 $downloaded = $gallery_row['downloaded_count'];
                 $status_color = $is_complete_status ? 'green' : ($downloaded > 0 ? 'orange' : 'red');
+                
+                // Nowa logika do pobierania miniaturek
+                $thumbnails = [];
+                $web_path_segment = '';
+                if (!empty($gallery_row['folder_path']) && is_dir($gallery_row['folder_path'])) {
+                    $model_sanitized_name = $gallery_row['model_sanitized_name_from_join'];
+                    $gallery_folder_name_only = basename($gallery_row['folder_path']);
+                    $web_path_segment = (defined('BASE_DATA_DIR_NAME') ? BASE_DATA_DIR_NAME : "Modelki") . '/' . $model_sanitized_name . '/' . $gallery_folder_name_only;
+                    
+                    $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                    $files = [];
+                    $dir_iterator = new DirectoryIterator($gallery_row['folder_path']);
+                    foreach ($dir_iterator as $fileinfo) {
+                        if ($fileinfo->isFile() && in_array(strtolower($fileinfo->getExtension()), $allowed_extensions)) {
+                            $files[] = $fileinfo->getFilename();
+                        }
+                    }
+                    natsort($files);
+                    $thumbnails = array_slice(array_values($files), 0, THUMBNAIL_LIMIT);
+                }
 
                 $aggregate_data['models'][$model_name_for_gallery]['galleries'][$gallery_row['gallery_id']] = [
                     'title' => $gallery_row['determined_title'] ?: $gallery_row['original_title'] ?: $gallery_row['gallery_id'],
@@ -130,7 +153,9 @@ switch ($action) {
                     'expected' => $expected, 'downloaded' => $downloaded, 'url' => $gallery_row['url'],
                     'status_color' => $status_color, 'completed' => $is_complete_status,
                     'model_name' => $model_name_for_gallery, 'gallery_id' => $gallery_row['gallery_id'],
-                    'is_disabled' => (bool)$gallery_row['is_disabled']
+                    'is_disabled' => (bool)$gallery_row['is_disabled'],
+                    'thumbnails' => $thumbnails,
+                    'web_path_segment' => $web_path_segment
                 ];
             }
 
@@ -234,6 +259,7 @@ switch ($action) {
         }
         break;
 
+    // ... pozostałe przypadki (case) bez zmian ...
     case 'update_queue':
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$pdo) { $response['message'] = 'Brak połączenia z DB.'; http_response_code(503); break; }
@@ -353,7 +379,6 @@ switch ($action) {
 
         $galleries = [];
         try {
-            // Zmiana: Zastąpiono :term na ?, aby uniknąć błędu "Invalid parameter number"
             $sql = "SELECT g.gallery_id, g.url, g.original_title, g.determined_title, 
                            g.expected_count, g.downloaded_count, g.status,
                            m.model_name, m.sanitized_name as model_sanitized_name
@@ -374,7 +399,6 @@ switch ($action) {
 
             $stmt = $pdo->prepare($sql);
             $term_param = '%' . $search_term . '%';
-            // Zmiana: Powiązano parametr 4 razy, po jednym dla każdego znaku ?
             $stmt->execute([$term_param, $term_param, $term_param, $term_param]);
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
