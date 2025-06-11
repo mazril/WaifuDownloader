@@ -247,21 +247,27 @@ def _refresh_galleries_data_for_model(driver, model_name_original, shutdown_flag
 def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_input,
                            shutdown_flag_func=None):
     """
-    Przetwarza pojedynczą galerię: pobiera dane, linki, zleca AI, pobiera pliki.
+    Przetwarza pojedynczą galerię: pobiera dane, linki, zleca AI, czeka na tytuł, pobiera pliki.
 
     Opis modyfikacji:
+    - Zmieniono logikę, aby po zebraniu linków, jeśli tytuł od AI nie jest gotowy,
+      skrypt czekał przez `ai_title_wait_timeout` sekund (z config.json) i
+      sprawdzał ponownie.
+    - Dopiero po tym oczekiwaniu, jeśli tytuł wciąż jest niedostępny, przechodzi do
+      następnej galerii.
+    - Jeśli tytuł jest dostępny (od razu lub po oczekiwaniu), natychmiast
+      przystępuje do pobierania plików.
     - Po wywołaniu `dm_download_gallery`, sprawdza nową flagę `was_disabled`.
     - Jeśli flaga jest `True`, aktualizuje galerię w bazie, ustawiając
       `is_disabled = True` i status na `disabled_bad_links`, po czym kończy pracę.
-    - Standardowa logika aktualizacji statusu po pobraniu jest wykonywana
-      tylko wtedy, gdy galeria nie została wyłączona.
 
     Wpływ na inne funkcje:
-    - Kluczowa funkcja integrująca nową logikę wyłączania galerii.
+    - Kluczowa funkcja integrująca nową logikę. Zapewnia, że nowo odkryte
+      galerie są od razu pobierane, jeśli to możliwe, zamiast czekać na kolejny cykl.
     """
     logger.info(f"PSG_START ({gallery_id_input}): Rozpoczynam przetwarzanie.")
     config_handler.load_config()
-    gallery_entry_db = db_manager.get_gallery(gallery_id_input) 
+    gallery_entry_db = db_manager.get_gallery(gallery_id_input)
     
     if not gallery_entry_db:
         logger.error(f"PSG_ERROR ({gallery_id_input}): Nie udało się pobrać danych galerii z DB! Pomijam.")
@@ -298,12 +304,11 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
             gallery_entry_db = db_manager.get_gallery(gallery_id_input)
         
         # Krok 2: Zlecenie zadania dla AI, jeśli brakuje tytułu
-        if not gallery_entry_db.get('determined_title'):
-            if gallery_entry_db.get('status') != 'pending_production_ai':
-                logger.info(f"PSG ({gallery_id_input}): Brak 'determined_title'. Ustawiam status 'pending_production_ai'.")
-                db_manager.update_gallery(gallery_id_input, status='pending_production_ai')
-                gallery_entry_db = db_manager.get_gallery(gallery_id_input)
-
+        if not gallery_entry_db.get('determined_title') and gallery_entry_db.get('status') != 'pending_production_ai':
+            logger.info(f"PSG ({gallery_id_input}): Brak 'determined_title'. Ustawiam status 'pending_production_ai'.")
+            db_manager.update_gallery(gallery_id_input, status='pending_production_ai')
+            gallery_entry_db = db_manager.get_gallery(gallery_id_input)
+        
         # Krok 3: Zbieranie linków, jeśli ich brakuje
         if not gallery_entry_db.get('links_collected'):
             logger.info(f"PSG ({gallery_id_input}): Wymagane zebranie linków do obrazów.")
@@ -319,31 +324,31 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
             )
             hrefs = [el.get_attribute('href') for el in image_link_elements if el.get_attribute('href')]
             
-            updates = {
-                'image_links_json': json.dumps(hrefs),
-                'links_collected': True
-            }
-            if gallery_entry_db.get('expected_count') is None or len(hrefs) > gallery_entry_db.get('expected_count'):
+            updates = {'image_links_json': json.dumps(hrefs), 'links_collected': True}
+            if gallery_entry_db.get('expected_count') is None or len(hrefs) > gallery_entry_db.get('expected_count', 0):
                 updates['expected_count'] = len(hrefs)
             
             db_manager.update_gallery(gallery_id_input, **updates)
             logger.info(f"PSG ({gallery_id_input}): Zebrano i zapisano w DB {len(hrefs)} linków.")
-            gallery_entry_db = db_manager.get_gallery(gallery_id_input) 
+            gallery_entry_db = db_manager.get_gallery(gallery_id_input)
 
-        # Krok 4: Sprawdzenie, czy można już pobierać
+        # Krok 4: Sprawdzenie tytułu AI z ewentualnym oczekiwaniem
         title_is_ready = gallery_entry_db.get('determined_title')
-        links_are_ready = gallery_entry_db.get('links_collected')
+        if not title_is_ready:
+            wait_timeout = config_handler.current_config['pauses_and_rotation']['ai_title_wait_timeout']['value']
+            logger.info(f"PSG ({gallery_id_input}): Tytuł od AI nie jest gotowy. Czekam {wait_timeout}s.")
+            reporting.update_current_status(f"Czekanie na AI ({wait_timeout}s)...", model=model_name_from_db, gallery=title_for_reporting, gallery_id=gallery_id_input, is_processing=True)
+            time.sleep(wait_timeout)
+            
+            logger.info(f"PSG ({gallery_id_input}): Ponowne sprawdzanie tytułu w DB po oczekiwaniu.")
+            gallery_entry_db = db_manager.get_gallery(gallery_id_input)
+            title_is_ready = gallery_entry_db.get('determined_title')
 
         if not title_is_ready:
-            logger.info(f"PSG ({gallery_id_input}): Tytuł od AI nie jest jeszcze gotowy. Kończę cykl dla tej galerii.")
-            reporting.update_current_status("Oczekuje na AI...", model=model_name_from_db, gallery=title_for_reporting, gallery_id=gallery_id_input, is_processing=True)
-            return True 
+            logger.info(f"PSG ({gallery_id_input}): Tytuł nadal nie jest gotowy. Kończę cykl dla tej galerii.")
+            return True # Kończymy, ale operacja się udała, przechodzimy do następnej
 
-        if not links_are_ready:
-            logger.error(f"PSG ({gallery_id_input}): Błąd logiczny - dotarto do etapu pobierania, ale linki nie są zebrane.")
-            return False
-
-        # Krok 5: Przygotowanie folderu i pobieranie
+        # Krok 5: Przygotowanie folderu i pobieranie (tylko jeśli tytuł jest gotowy)
         title_for_folder_creation = gallery_entry_db.get("determined_title")
         sanitized_folder_base = utils.sanitize_foldername(title_for_folder_creation)
         model_base_data_dir = os.path.join(constants.BASE_DATA_DIR, sanitized_model_name)
@@ -482,6 +487,22 @@ def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None):
 
 def handle_process_models(start_model_index=0, check_mode="all_or_incomplete", 
                           shutdown_flag_func=None):
+    """
+    Główna funkcja orkiestrująca przetwarzanie modeli i ich galerii.
+
+    Opis modyfikacji:
+    - Dodano zbiór `processed_galleries_this_run` do śledzenia już przetworzonych galerii.
+    - Po przetworzeniu galerii w głównej pętli (`galleries_for_model_processing`),
+      natychmiast wywoływana jest nowa funkcja `get_ready_to_download_galleries_for_model`,
+      aby sprawdzić, czy inne galerie tego samego modelu są gotowe do pobrania.
+    - Jeśli tak, są one natychmiast przetwarzane przez `process_single_gallery`.
+    - Dodano końcowe sprawdzenie gotowych galerii po zakończeniu pętli dla danego modelu.
+
+    Wpływ na inne funkcje:
+    - Zmienia sekwencyjny charakter pętli na bardziej "oportunistyczny",
+      co pozwala na natychmiastowe pobieranie gotowych galerii, zamiast czekać na
+      kolejną iterację po wszystkich modelach.
+    """
     models_db = db_manager.execute_query("SELECT model_id, model_name FROM models ORDER BY model_name ASC", fetch_all=True)
     all_models = models_db if models_db else []
 
@@ -512,8 +533,6 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
 
             if _is_shutdown_requested_processing(shutdown_flag_func): break
             
-            # ... logika przetwarzania priorytetów bez zmian ...
-
             logger.info(f"=== PRZETWARZANIE MODELKI: {model_name} ({current_global_idx + 1}/{len(all_models)}) ===")
             reporting.update_current_status(f"Przetwarzanie ({check_mode})", model=model_name, is_processing=True)
             
@@ -528,6 +547,7 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
                 process_single_gallery(driver, model_name, gal_data_item['url'], gal_data_item['gallery_id'], shutdown_flag_func=shutdown_flag_func)
                 processed_galleries_this_run.add(gal_data_item['gallery_id'])
                 
+                # Sprawdzenie gotowych do pobrania galerii po każdej operacji
                 ready_to_download = db_manager.get_ready_to_download_galleries_for_model(model_id_db)
                 for ready_gal in ready_to_download:
                     if ready_gal['gallery_id'] not in processed_galleries_this_run:
@@ -535,6 +555,7 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
                         process_single_gallery(driver, model_name, ready_gal['url'], ready_gal['gallery_id'], shutdown_flag_func=shutdown_flag_func)
                         processed_galleries_this_run.add(ready_gal['gallery_id'])
 
+            # Końcowe sprawdzenie gotowych galerii dla modelu
             logger.info(f"HPM: Końcowe sprawdzanie gotowych galerii dla '{model_name}'.")
             final_check = db_manager.get_ready_to_download_galleries_for_model(model_id_db)
             for ready_gal in final_check:
@@ -544,8 +565,6 @@ def handle_process_models(start_model_index=0, check_mode="all_or_incomplete",
 
             logger.info(f"--- HPM: Zakończono model: {model_name} ---")
             
-        # ... reszta funkcji bez zmian ...
-
     except constants.RestartRequiredError as rre_hpm: 
         last_error = rre_hpm
         logger.warning(f"RRE w HPM: {rre_hpm}. Zapisano stan. Skrypt powinien zostać zrestartowany.")
