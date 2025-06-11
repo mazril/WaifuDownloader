@@ -44,6 +44,22 @@ def kill_chrome_processes():
         logger.warning(f"Nieoczekiwany błąd podczas zamykania procesów Chrome/ChromeDriver: {e}", exc_info=False)
 
 def _create_driver_instance_for_thread(q_result, adblock_path_local):
+    """
+    Tworzy instancję przeglądarki w osobnym wątku, aby uniknąć blokowania.
+
+    Opis modyfikacji:
+    - Dodano logikę sprawdzającą, czy w katalogu skryptu istnieje plik `chromedriver.exe`.
+    - Jeśli tak, przekazuje ścieżkę do tego pliku (`driver_executable_path`)
+      do `uc.Chrome`. To powoduje, że biblioteka używa lokalnego sterownika
+      zamiast próbować go pobrać z internetu, co eliminuje błędy sieciowe
+      (jak `getaddrinfo failed`) na etapie inicjalizacji.
+    - Jeśli plik nie istnieje, skrypt działa jak dotychczas, próbując pobrać sterownik.
+
+    Wpływ na inne funkcje:
+    - Zwiększa niezawodność `create_driver_with_retry`, czyniąc ją odporną
+      na problemy z siecią/DNS podczas uruchamiania, pod warunkiem, że użytkownik
+      umieścił `chromedriver.exe` w folderze projektu.
+    """
     logger.debug(f"Rozpoczynam tworzenie instancji drivera w wątku (AdBlock: {adblock_path_local})")
     adblock_loaded_successfully = False
     try:
@@ -68,9 +84,21 @@ def _create_driver_instance_for_thread(q_result, adblock_path_local):
             adblock_loaded_successfully = True
         else:
             logger.warning(f"Nie znaleziono rozszerzenia AdBlock w: {adblock_path_local}")
+        
+        # --- NOWA LOGIKA ---
+        # Sprawdzenie, czy lokalny chromedriver.exe istnieje i użycie go
+        local_chromedriver_path = os.path.join(constants.SCRIPT_DIR, 'chromedriver.exe')
+        driver_kwargs = {'service': service, 'options': options}
+
+        if os.path.exists(local_chromedriver_path):
+            logger.info(f"Znaleziono lokalny sterownik w {local_chromedriver_path}. Używam go, aby pominąć pobieranie.")
+            driver_kwargs['driver_executable_path'] = local_chromedriver_path
+        else:
+            logger.info("Lokalny chromedriver.exe nie został znaleziony. Biblioteka spróbuje go pobrać automatycznie.")
+        # --- KONIEC NOWEJ LOGIKI ---
 
         logger.info("Uruchamiam uc.Chrome()...")
-        driver = uc.Chrome(service=service, options=options) 
+        driver = uc.Chrome(**driver_kwargs)
         logger.info("Instancja uc.Chrome() uruchomiona. Sprawdzam responsywność...")
         _ = driver.current_url 
         logger.info("Przeglądarka responsywna.")
