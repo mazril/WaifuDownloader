@@ -390,6 +390,19 @@ def get_model_galleries_for_processing(model_id, check_mode="all_or_incomplete")
 
 
 def get_ready_to_download_galleries_for_model(model_id):
+    """
+    Pobiera galerie dla danego modelu, które są gotowe do pobrania plików.
+    
+    Opis:
+    - Nowa funkcja pomocnicza.
+    - Wyszukuje galerie, które mają już tytuł od AI (`determined_title`)
+      oraz zebrane linki (`links_collected = TRUE`), ale nie są jeszcze
+      ukończone.
+      
+    Wpływ na inne funkcje:
+    - Wywoływana z `processing.py` w `handle_process_models`, aby umożliwić
+      oportunistyczne pobieranie galerii, gdy tylko będą gotowe.
+    """
     query = """
         SELECT * FROM galleries 
         WHERE model_id = %s 
