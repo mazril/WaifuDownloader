@@ -19,12 +19,11 @@ def get_default_config():
     Zwraca domyślną strukturę konfiguracji.
     
     Opis modyfikacji:
-    - Dodano klucz `max_consecutive_download_errors` w sekcji `downloading`
-      z domyślną wartością 5.
+    - Dodano klucz `ai_title_wait_timeout` w sekcji `pauses_and_rotation`.
       
     Wpływ na inne funkcje:
-    - Umożliwia odczyt nowego parametru w `data_manager.py` do kontroli
-      wyłączania galerii z błędami.
+    - Umożliwia odczyt nowego parametru w `processing.py` do kontrolowania
+      oczekiwania na tytuł z AI.
     """
     return {
         "scrolling": {
@@ -49,7 +48,8 @@ def get_default_config():
             "gallery_pause": {"value": 5.0, "description": "Pauza (s) po pobraniu całej galerii."},
             "GALLERY_PAUSE_THRESHOLD_MIN": {"value": 25, "description": "Min. liczba galerii do rotacji IP."},
             "GALLERY_PAUSE_THRESHOLD_MAX": {"value": 35, "description": "Max. liczba galerii do rotacji IP."},
-            "ai_worker_loop_delay": {"value": 15, "description": "Opóźnienie (s) między kolejnymi cyklami pętli workera AI."}
+            "ai_worker_loop_delay": {"value": 15, "description": "Opóźnienie (s) między kolejnymi cyklami pętli workera AI."},
+            "ai_title_wait_timeout": {"value": 30, "description": "Czas (s), przez który skrypt poczeka na odpowiedź AI z tytułem, zanim przejdzie do następnej galerii."}
         },
         "database": {
             "host": { "value": "localhost", "description": "Host bazy danych MySQL." },
