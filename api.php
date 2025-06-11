@@ -8,6 +8,24 @@ header('Access-Control-Allow-Headers: Content-Type');
 require_once 'php_config.php';
 require_once 'php_utils.php';
 
+// --- NOWA SEKCJA: USTAWIENIA CACHE ---
+define('AGGREGATE_CACHE_DIR', __DIR__ . '/cache');
+define('AGGREGATE_CACHE_FILE', AGGREGATE_CACHE_DIR . '/aggregate_data.json');
+define('AGGREGATE_CACHE_TIME', 300); // Czas ważności cache w sekundach (5 minut)
+
+/**
+ * Funkcja do czyszczenia pliku cache agregatu.
+ * Zapewnia, że po każdej modyfikacji dane zostaną wygenerowane na nowo.
+ */
+function clear_aggregate_cache() {
+    if (file_exists(AGGREGATE_CACHE_FILE)) {
+        @unlink(AGGREGATE_CACHE_FILE);
+        api_log("Cache agregatu wyczyszczony.");
+    }
+}
+// --- KONIEC SEKCJI CACHE ---
+
+
 // Obsługa żądania OPTIONS (preflight)
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     http_response_code(200);
@@ -19,7 +37,7 @@ define('THUMBNAIL_LIMIT', 10);
 
 // Funkcja logująca żądania API
 function api_log($message) {
-    $log_file = __DIR__ . '/api_debug.txt'; // Upewnij się, że ten plik jest zapisywalny przez serwer WWW
+    $log_file = __DIR__ . '/api_debug.txt';
     $timestamp = date('Y-m-d H:i:s');
     $remote_addr = $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN_IP';
     $request_method = $_SERVER['REQUEST_METHOD'] ?? 'UNKNOWN_METHOD';
@@ -33,7 +51,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? null;
 $response = ['success' => false, 'message' => 'Nieznana akcja lub brak akcji.'];
 $pdo = get_db_connection();
 
-if (!$pdo && !in_array($action, ['get_status', 'get_global_ai_settings', 'save_global_ai_settings'])) {
+if (!$pdo && !in_array($action, ['get_status', 'get_global_ai_settings', 'save_global_ai_settings', 'clear_cache'])) {
     http_response_code(503); 
     $response['message'] = 'Błąd serwera: Nie można połączyć się z bazą danych.';
     api_log("Krytyczny błąd: Brak połączenia PDO. Akcja: " . var_export($action, true));
@@ -45,7 +63,7 @@ $raw_post_data = file_get_contents('php://input');
 if (
     ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($raw_post_data)) &&
     (
-        !in_array($action, ['get_status', 'get_aggregate', 'get_queue']) ||
+        !in_array($action, ['get_status', 'get_aggregate', 'get_queue', 'clear_cache']) ||
         in_array($action, ['mark_gallery_completed', 'trigger_ai_test_run', 'trigger_ai_update', 'save_ai_prompt_config', 'rename_gallery_folder', 'update_queue', 'promote_test_to_production', 'save_global_ai_settings', 'toggle_gallery_disabled_status'])
     )
 ) {
@@ -56,6 +74,11 @@ if (
 
 
 switch ($action) {
+    case 'clear_cache':
+        clear_aggregate_cache();
+        $response = ['success' => true, 'message' => 'Cache został wyczyszczony.'];
+        break;
+
     case 'get_status':
         $status_data = get_app_state_db('current_status');
         if ($status_data && is_array($status_data)) {
@@ -82,6 +105,13 @@ switch ($action) {
         break;
 
     case 'get_aggregate':
+        if (file_exists(AGGREGATE_CACHE_FILE) && (time() - filemtime(AGGREGATE_CACHE_FILE) < AGGREGATE_CACHE_TIME)) {
+            api_log("Zwracam dane agregatu z cache.");
+            readfile(AGGREGATE_CACHE_FILE);
+            exit();
+        }
+        api_log("Generuję nowe dane agregatu (cache nie istnieje lub jest przestarzały).");
+
         $aggregate_data = ['models' => []];
         try {
             if (!$pdo) throw new Exception("Brak połączenia z bazą danych dla get_aggregate.");
@@ -127,7 +157,6 @@ switch ($action) {
                 $downloaded = $gallery_row['downloaded_count'];
                 $status_color = $is_complete_status ? 'green' : ($downloaded > 0 ? 'orange' : 'red');
                 
-                // Nowa logika do pobierania miniaturek
                 $thumbnails = [];
                 $web_path_segment = '';
                 if (!empty($gallery_row['folder_path']) && is_dir($gallery_row['folder_path'])) {
@@ -135,19 +164,23 @@ switch ($action) {
                     $gallery_folder_name_only = basename($gallery_row['folder_path']);
                     $web_path_segment = (defined('BASE_DATA_DIR_NAME') ? BASE_DATA_DIR_NAME : "Modelki") . '/' . $model_sanitized_name . '/' . $gallery_folder_name_only;
                     
-                    $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-                    $files = [];
-                     try {
-                        $dir_iterator = new DirectoryIterator($gallery_row['folder_path']);
-                        foreach ($dir_iterator as $fileinfo) {
-                            if ($fileinfo->isFile() && in_array(strtolower($fileinfo->getExtension()), $allowed_extensions)) {
-                                $files[] = $fileinfo->getFilename();
+                    if (is_readable($gallery_row['folder_path'])) {
+                        try {
+                            $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                            $files = [];
+                            $dir_iterator = new DirectoryIterator($gallery_row['folder_path']);
+                            foreach ($dir_iterator as $fileinfo) {
+                                if ($fileinfo->isFile() && in_array(strtolower($fileinfo->getExtension()), $allowed_extensions)) {
+                                    $files[] = $fileinfo->getFilename();
+                                }
                             }
+                            natsort($files);
+                            $thumbnails = array_slice(array_values($files), 0, THUMBNAIL_LIMIT);
+                        } catch (Exception $e) {
+                            api_log("Błąd odczytu katalogu (iterator) dla miniaturek: " . $gallery_row['folder_path'] . " | Błąd: " . $e->getMessage());
                         }
-                        natsort($files);
-                        $thumbnails = array_slice(array_values($files), 0, THUMBNAIL_LIMIT);
-                    } catch (Exception $e) {
-                        api_log("Błąd odczytu katalogu dla miniaturek: " . $gallery_row['folder_path'] . " | Błąd: " . $e->getMessage());
+                    } else {
+                        api_log("Błąd odczytu katalogu (nieczytelny) dla miniaturek: " . $gallery_row['folder_path']);
                     }
                 }
 
@@ -172,6 +205,11 @@ switch ($action) {
             }
             unset($model_data_ref); 
             $response = ['success' => true, 'models' => $aggregate_data['models']];
+
+            if (!is_dir(AGGREGATE_CACHE_DIR)) {
+                @mkdir(AGGREGATE_CACHE_DIR, 0775, true);
+            }
+            file_put_contents(AGGREGATE_CACHE_FILE, json_encode($response), LOCK_EX);
 
         } catch (PDOException $e) {
             error_log("Błąd DB w get_aggregate: " . $e->getMessage());
@@ -313,11 +351,8 @@ switch ($action) {
                 $base_model_dir = rtrim($script_base_dir_for_data, '/') . '/' . $model_sanitized;
                 $final_new_path = rtrim($base_model_dir, '/') . '/' . $new_gallery_sanitized; 
 
-                // --- NOWA LOGIKA - Obsługa duplikatów nazw przez inkrementację ---
                 $original_path_candidate = $final_new_path;
                 $counter = 1;
-                // Pętla sprawdzająca, czy ścieżka istnieje. Jeśli tak, dodaje numer i sprawdza ponownie.
-                // Sprawdzenie realpath() zapobiega problemom, gdy zmienia się tylko wielkość liter w nazwie.
                 while (is_dir($final_new_path) && (!empty($old_path) && realpath($old_path) != realpath($final_new_path))) {
                     $final_new_path = $original_path_candidate . ' ' . $counter;
                     $counter++;
@@ -326,7 +361,6 @@ switch ($action) {
                 if ($original_path_candidate != $final_new_path) {
                     api_log("API rename: Wykryto duplikat dla '$original_path_candidate'. Nowa, unikalna ścieżka to: '$final_new_path'.");
                 }
-                // --- KONIEC NOWEJ LOGIKI ---
 
                 if (empty($old_path)) {
                     api_log("API rename: Brak folder_path w DB dla $gallery_id_rename. Tylko aktualizacja tytułu. Nowa ścieżka w DB to '$final_new_path'");
@@ -334,22 +368,15 @@ switch ($action) {
                     $stmt_update_path_only->execute([':new_path' => $final_new_path, ':gallery_id' => $gallery_id_rename]);
                     $pdo->commit();
                     $response = ['success' => true, 'message' => 'Tytuł zaktualizowany. Brak ścieżki folderu w bazie do zmiany nazwy.', 'new_folder_path' => $final_new_path];
-                    break;
-                }
-                
-                if (!is_dir($base_model_dir)) {
+                } else if (!is_dir($base_model_dir)) {
                     api_log("API rename: Katalog modelki '$base_model_dir' nie istnieje, próba utworzenia...");
                     if (!@mkdir($base_model_dir, 0775, true) && !is_dir($base_model_dir)) {
                         throw new Exception("Katalog modelki ($base_model_dir) nie istnieje i nie można go utworzyć.");
                     }
-                }
-                
-                $old_path_exists_and_is_dir = is_dir($old_path);
-                
-                if ($old_path_exists_and_is_dir && realpath($old_path) == realpath($final_new_path)) {
+                } else if (is_dir($old_path) && realpath($old_path) == realpath($final_new_path)) {
                      $pdo->commit();
                      $response = ['success' => true, 'message' => 'Tytuł zaktualizowany. Nazwa folderu bez zmian.', 'new_folder_path' => $final_new_path];
-                } elseif (!$old_path_exists_and_is_dir) {
+                } elseif (!is_dir($old_path)) {
                     $stmt_update_path_db = $pdo->prepare("UPDATE galleries SET folder_path = :new_path WHERE gallery_id = :gallery_id"); 
                     $stmt_update_path_db->execute([':new_path' => $final_new_path, ':gallery_id' => $gallery_id_rename]);
                     $pdo->commit();
@@ -368,6 +395,11 @@ switch ($action) {
                         api_log("Błąd zmiany nazwy folderu: $err_msg");
                     }
                 }
+
+                if ($response['success']) {
+                    clear_aggregate_cache();
+                }
+
             } catch (PDOException $e) {
                 if($pdo->inTransaction()) { $pdo->rollBack(); }
                 $response['message'] = "Błąd bazy danych: " . $e->getMessage();
@@ -427,6 +459,7 @@ switch ($action) {
                 $stmt_insert->execute([':model_name' => $model_name_param, ':sanitized_name' => $sanitized_name]);
                 if ($stmt_insert->rowCount() > 0) {
                     $response = ['success' => true, 'message' => "Modelka '$model_name_param' dodana do bazy danych."];
+                    clear_aggregate_cache();
                 } else {
                     $response['message'] = "Nie udało się dodać modelki '$model_name_param' do bazy danych.";
                      http_response_code(500);
@@ -1000,14 +1033,11 @@ switch ($action) {
     case 'mark_gallery_completed':
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$pdo) { $response['message'] = 'Brak połączenia z DB.'; http_response_code(503); break; }
-            
             $data_mark_completed = json_decode($raw_post_data, true); 
             $gallery_id_mark = $data_mark_completed['gallery_id'] ?? null; 
 
             if (!$gallery_id_mark) {
-                http_response_code(400);
-                $response['message'] = 'Nie podano ID galerii.';
-                break;
+                http_response_code(400); $response['message'] = 'Nie podano ID galerii.'; break;
             }
 
             try {
@@ -1027,10 +1057,8 @@ switch ($action) {
                 }
 
                 $pdo->beginTransaction();
-
                 $sql_update_mark = "UPDATE galleries SET status = 'completed'"; 
                 $params_update_mark = [':gallery_id' => $gallery_id_mark]; 
-
                 if ($gallery_counts_mark['expected_count'] !== null) {
                     $sql_update_mark .= ", downloaded_count = expected_count";
                 }
@@ -1043,15 +1071,16 @@ switch ($action) {
                     $pdo->commit();
                     $response = ['success' => true, 'message' => "Galeria '$gallery_id_mark' została oznaczona jako ukończona."];
                     api_log("Galeria '$gallery_id_mark' oznaczona jako ukończona przez użytkownika via API.");
+                    clear_aggregate_cache();
                 } else {
                     $pdo->rollBack();
-                    $response['message'] = "Nie udało się zaktualizować statusu galerii '$gallery_id_mark' (być może już była ukończona lub wystąpił inny problem).";
+                    $response['message'] = "Nie udało się zaktualizować statusu galerii '$gallery_id_mark'.";
                 }
             } catch (PDOException $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 error_log("Błąd DB w mark_gallery_completed dla ID '$gallery_id_mark': " . $e->getMessage());
                 api_log("Błąd DB w mark_gallery_completed dla ID '$gallery_id_mark': " . $e->getMessage());
-                $response['message'] = "Błąd bazy danych podczas oznaczania galerii jako ukończonej.";
+                $response['message'] = "Błąd bazy danych.";
                 http_response_code(500);
             }
         } else {
@@ -1072,7 +1101,6 @@ switch ($action) {
 
             try {
                 $pdo->beginTransaction();
-
                 $stmt_get = $pdo->prepare("SELECT is_disabled FROM galleries WHERE gallery_id = :id FOR UPDATE");
                 $stmt_get->execute([':id' => $gallery_id]);
                 $current_state = $stmt_get->fetchColumn();
@@ -1100,12 +1128,13 @@ switch ($action) {
                     'message' => 'Status galerii został zaktualizowany.',
                     'new_state_is_disabled' => $new_state
                 ];
+                clear_aggregate_cache();
 
             } catch (PDOException $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 error_log("Błąd DB w toggle_gallery_disabled_status: " . $e->getMessage());
                 api_log("Błąd DB w toggle_gallery_disabled_status: " . $e->getMessage());
-                $response['message'] = 'Błąd bazy danych podczas aktualizacji statusu galerii.';
+                $response['message'] = 'Błąd bazy danych.';
                 http_response_code(500);
             }
         } else {
@@ -1113,7 +1142,7 @@ switch ($action) {
             $response['message'] = 'Metoda niedozwolona (wymagany POST).';
         }
         break;
-        
+
     default:
         http_response_code(400);
         if(isset($action) && !empty($action)){ 
