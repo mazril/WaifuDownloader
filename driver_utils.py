@@ -54,11 +54,6 @@ def _create_driver_instance_for_thread(q_result, adblock_path_local):
       zamiast próbować go pobrać z internetu, co eliminuje błędy sieciowe
       (jak `getaddrinfo failed`) na etapie inicjalizacji.
     - Jeśli plik nie istnieje, skrypt działa jak dotychczas, próbując pobrać sterownik.
-
-    Wpływ na inne funkcje:
-    - Zwiększa niezawodność `create_driver_with_retry`, czyniąc ją odporną
-      na problemy z siecią/DNS podczas uruchamiania, pod warunkiem, że użytkownik
-      umieścił `chromedriver.exe` w folderze projektu.
     """
     logger.debug(f"Rozpoczynam tworzenie instancji drivera w wątku (AdBlock: {adblock_path_local})")
     adblock_loaded_successfully = False
@@ -363,35 +358,42 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
         driver.execute_script(f"window.scrollBy(0, {effective_jump});")
         time.sleep(random.uniform(p_min, p_max))
 
+        # Zmodyfikowana logika obsługi spinnera
         try:
             if shutdown_flag_func and shutdown_flag_func(): break
-            spinner = driver.find_element(By.ID, "loading-spinner")
-            if spinner and spinner.is_displayed() and _is_element_in_viewport(driver, spinner, shutdown_flag_func=shutdown_flag_func):
+            initial_spinner = driver.find_element(By.ID, "loading-spinner")
+            if initial_spinner and initial_spinner.is_displayed() and _is_element_in_viewport(driver, initial_spinner, shutdown_flag_func):
                 
+                # Szybka korekta, jeśli spinner jest pod YMAL
                 try:
                     ymal_header = driver.find_element(By.XPATH, "//h1[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'you may also like:')]")
-                    if ymal_header and spinner.location['y'] > ymal_header.location['y']:
+                    if ymal_header and initial_spinner.location['y'] > ymal_header.location['y']:
                         logger.warning("SUT: 🍥 Wykryto spinner PONIŻEJ 'YOU MAY ALSO LIKE'. Wykonuję korektę w górę.")
                         driver.execute_script(f"window.scrollBy(0, -{effective_jump * 2});")
                         last_new_time = time.time()
                         continue
-                except NoSuchElementException:
-                    pass
-                except Exception as e_ymal_spinner:
-                    logger.warning(f"SUT: Błąd podczas sprawdzania pozycji spinnera vs YMAL: {e_ymal_spinner}")
+                except (NoSuchElementException, Exception): pass
 
-                logger.info(f"SUT: 🍥 Wykryto WIDOCZNY spinner. Czekam do {spinner_wait}s...")
+                # Pętla aktywnego oczekiwania na zniknięcie spinnera
+                logger.info(f"SUT: 🍥 Wykryto WIDOCZNY spinner. Czekam do {spinner_wait}s (sprawdzam co 0.5s)...")
                 spinner_start_time = time.monotonic()
-                while time.monotonic() - spinner_start_time < spinner_wait:
+                spinner_still_visible = True
+                while spinner_still_visible and time.monotonic() - spinner_start_time < spinner_wait:
                     if shutdown_flag_func and shutdown_flag_func(): break
                     time.sleep(0.5)
                     try:
-                        if not driver.find_element(By.ID, "loading-spinner").is_displayed():
-                            logger.info("SUT:   🍥 Spinner zniknął. Kontynuuję."); last_new_time = time.time(); break
-                    except NoSuchElementException: logger.info("SUT:   🍥 Spinner zniknął (NSE). Kontynuuję."); last_new_time = time.time(); break
-                else: 
-                    if not (shutdown_flag_func and shutdown_flag_func()):
-                         logger.info(f"SUT:   🍥 Timeout ({spinner_wait}s) czekania na spinner. Kontynuuję.")
+                        current_spinner = driver.find_element(By.ID, "loading-spinner")
+                        if not current_spinner.is_displayed() or not _is_element_in_viewport(driver, current_spinner, shutdown_flag_func):
+                            logger.info("SUT:   🍥 Spinner zniknął lub jest poza ekranem. Kontynuuję.")
+                            spinner_still_visible = False
+                    except NoSuchElementException:
+                        logger.info("SUT:   🍥 Spinner zniknął (nie znaleziono elementu). Kontynuuję.")
+                        spinner_still_visible = False
+
+                if spinner_still_visible and not (shutdown_flag_func and shutdown_flag_func()):
+                    logger.info(f"SUT:   🍥 Timeout ({spinner_wait}s) czekania na spinner. Kontynuuję mimo to.")
+                
+                last_new_time = time.time() # Resetuj czas oczekiwania po obsłudze spinnera
         except NoSuchElementException: pass 
         except Exception as e: logger.warning(f"SUT:   ⚠️ Błąd spinnera: {e}", exc_info=False)
         
