@@ -34,9 +34,8 @@ if ($pdo) {
 <head>
     <meta charset="UTF-8">
     <title>Panel Główny WaifuDownloader</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=<?php echo time(); ?>">
     <style>
-        /* Dodatkowe style dla nowych elementów */
         .global-ai-settings { border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-top: 25px; background-color: #f9f9f9; }
         .global-ai-settings h3 { margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; }
         .global-ai-settings .form-group { margin-bottom: 15px; }
@@ -81,7 +80,7 @@ if ($pdo) {
         </div>
 
         <div id="test_ai_titles" class="tab-content <?php echo ($active_tab === 'test_ai_titles') ? 'active' : ''; ?>">
-            <h1>Testowanie i Porównywanie Tytułów AI</h1>
+             <h1>Testowanie i Porównywanie Tytułów AI</h1>
             <div class="filters">
                 <label for="model-filter-test-ai">Modelka:</label>
                 <select id="model-filter-test-ai">
@@ -158,8 +157,7 @@ if ($pdo) {
         </div>
 
         <div id="ollama_prompts_settings" class="tab-content <?php echo ($active_tab === 'ollama_prompts_settings') ? 'active' : ''; ?>">
-            <h1>Ustawienia AI</h1>
-            
+             <h1>Ustawienia AI</h1>
             <div class="global-ai-settings">
                 <h3>Ustawienia Globalne AI</h3>
                 <div class="form-group">
@@ -221,12 +219,25 @@ if ($pdo) {
     </div>
 </div>
 
+<div id="lightbox-overlay" style="display:none;">
+    <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+    <div class="lightbox-nav prev" onclick="changeLightboxImage(-1)">&#10094;</div>
+    <img id="lightbox-image" src="" alt="Lightbox Image">
+    <div class="lightbox-nav next" onclick="changeLightboxImage(1)">&#10095;</div>
+    <div id="lightbox-caption"></div>
+</div>
+
 <div id="toast">Wiadomość</div>
 
 <script>
     // --- Global JS ---
     const API_URL_INDEX = 'api.php'; 
     const toastDivGlobal = document.getElementById('toast');
+
+    // --- Zmienne dla Lightbox ---
+    let lightboxVisible = false;
+    let lightboxImages = [];
+    let currentLightboxIndex = 0;
 
     function showGlobalToast(message, isError = false, duration = 3500) {
         if (!toastDivGlobal) return;
@@ -630,22 +641,25 @@ if ($pdo) {
                                     galleryLi = document.createElement('li');
                                     galleryLi.id = 'gallery_li_' + galleryId;
                                     galleryLi.innerHTML = `
-                                        <span class="gallery-link">
-                                            <span class="spinner"></span>
-                                            <a href="${gData.url || '#'}" target="_blank" title="Folder: ${gData.folder || 'Brak'}">${gData.title || galleryId}</a>
-                                        </span>
-                                        <div class="gallery-controls">
-                                            <span class="newly-found-count"></span>
-                                            <div class="progress-bar-container">
-                                                <div class="progress-bar"></div>
+                                        <div class="gallery-main-info">
+                                            <span class="gallery-link">
+                                                <span class="spinner"></span>
+                                                <a href="${gData.url || '#'}" target="_blank" title="Folder: ${gData.folder || 'Brak'}">${gData.title || galleryId}</a>
+                                            </span>
+                                            <div class="gallery-controls">
+                                                <span class="newly-found-count"></span>
+                                                <div class="progress-bar-container">
+                                                    <div class="progress-bar"></div>
+                                                </div>
+                                                <span class="gallery-status"></span>
+                                                <button class="btn-action btn-toggle-disabled ${toggleBtnClass}" onclick="toggleGalleryDisabledStatus('${escapedGalleryIdForJS}')">${toggleBtnText}</button>
+                                                <button class="btn-action btn-view-gallery" onclick="showGalleryFiles('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Pliki</button>
+                                                <button class="btn-action completed-action" onclick="markGalleryAsCompleted('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Ukończ</button>
+                                                <button class="btn-action" onclick="prioritizeItem('gallery', '${escapedGalleryIdForJS}')">Uzupełnij</button>
+                                                <a href="${gData.url || '#'}" target="_blank" class="btn-action">Źródło</a>
                                             </div>
-                                            <span class="gallery-status"></span>
-                                            <button class="btn-action btn-toggle-disabled ${toggleBtnClass}" onclick="toggleGalleryDisabledStatus('${escapedGalleryIdForJS}')">${toggleBtnText}</button>
-                                            <button class="btn-action btn-view-gallery" onclick="showGalleryFiles('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Pliki</button>
-                                            <button class="btn-action completed-action" onclick="markGalleryAsCompleted('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Ukończ</button>
-                                            <button class="btn-action" onclick="prioritizeItem('gallery', '${escapedGalleryIdForJS}')">Uzupełnij</button>
-                                            <a href="${gData.url || '#'}" target="_blank" class="btn-action">Źródło</a>
                                         </div>
+                                        <div class="gallery-thumbnails" id="thumbnails-for-${galleryId}"></div>
                                     `;
                                     nestedUl.appendChild(galleryLi);
                                 }
@@ -657,6 +671,20 @@ if ($pdo) {
                                      galleryLi.classList.remove('processing');
                                 }
                                 updateGalleryUI(galleryId, gData.downloaded, gData.expected, null, gData.title, gData.url, gData.folder);
+
+                                // Renderowanie miniaturek
+                                const thumbnailsDiv = galleryLi.querySelector(`#thumbnails-for-${galleryId}`);
+                                if (thumbnailsDiv && gData.thumbnails && gData.thumbnails.length > 0 && thumbnailsDiv.childElementCount === 0) {
+                                    gData.thumbnails.forEach(filename => {
+                                        const img = document.createElement('img');
+                                        img.src = `${gData.web_path_segment}/${filename}`;
+                                        img.loading = 'lazy';
+                                        img.alt = filename;
+                                        img.title = filename;
+                                        img.addEventListener('click', () => showGalleryFiles(galleryId, escapedGalleryTitleForJS));
+                                        thumbnailsDiv.appendChild(img);
+                                    });
+                                }
                             });
                              nestedUl.dataset.galleriesLoadedOnce = "true"; 
                         }
@@ -744,14 +772,16 @@ if ($pdo) {
                 if (data.success) {
                     imageViewerFilesDiv.innerHTML = ''; 
                     if (data.files && data.files.length > 0) {
+                        const allImageUrls = data.files.map(filename => `${data.web_path_segment}/${filename}`);
                         imageViewerStatusDiv.textContent = `Znaleziono ${data.files.length} plików.`;
-                        data.files.forEach(filename => {
+                        allImageUrls.forEach((url, index) => {
                             const img = document.createElement('img');
-                            img.src = `${data.web_path_segment}/${filename}`; 
-                            img.alt = filename;
-                            img.title = filename;
+                            img.src = url; 
+                            img.alt = data.files[index];
+                            img.title = data.files[index];
+                            img.loading = 'lazy';
                             img.onerror = function() { this.alt='Błąd ładowania'; this.style.border='1px solid red';};
-                            img.onclick = () => window.open(img.src, '_blank');
+                            img.onclick = () => openLightbox(allImageUrls, index);
                             imageViewerFilesDiv.appendChild(img);
                         });
                     } else {
@@ -977,6 +1007,50 @@ if ($pdo) {
             statusSpan.textContent = 'Błąd sieciowy!';
             showToast('Błąd sieciowy podczas zapisu kolejki.', true);
         });
+    }
+
+    // --- NOWE FUNKCJE DLA LIGHTBOX ---
+    function openLightbox(images, index) {
+        if (!images || images.length === 0) return;
+        lightboxImages = images;
+        currentLightboxIndex = index;
+        lightboxVisible = true;
+        document.getElementById('lightbox-overlay').style.display = 'flex';
+        document.addEventListener('keydown', handleLightboxKeys);
+        showLightboxImage();
+    }
+
+    function closeLightbox() {
+        lightboxVisible = false;
+        document.getElementById('lightbox-overlay').style.display = 'none';
+        document.removeEventListener('keydown', handleLightboxKeys);
+    }
+
+    function changeLightboxImage(direction) {
+        currentLightboxIndex += direction;
+        if (currentLightboxIndex >= lightboxImages.length) {
+            currentLightboxIndex = 0;
+        } else if (currentLightboxIndex < 0) {
+            currentLightboxIndex = lightboxImages.length - 1;
+        }
+        showLightboxImage();
+    }
+
+    function showLightboxImage() {
+        const imageUrl = lightboxImages[currentLightboxIndex];
+        document.getElementById('lightbox-image').src = imageUrl;
+        document.getElementById('lightbox-caption').textContent = `${currentLightboxIndex + 1} / ${lightboxImages.length}`;
+    }
+
+    function handleLightboxKeys(e) {
+        if (!lightboxVisible) return;
+        if (e.key === 'ArrowRight' || e.key === 'd') {
+            changeLightboxImage(1);
+        } else if (e.key === 'ArrowLeft' || e.key === 'a') {
+            changeLightboxImage(-1);
+        } else if (e.key === 'Escape') {
+            closeLightbox();
+        }
     }
 
     // --- JS for Tab 2: Testowanie Tytułów AI ---
@@ -1348,6 +1422,7 @@ if ($pdo) {
     }
 
     // --- JS for Tab 3: Ustawienia AI ---
+    let promptConfigsContainerOllama, promoteTestBtnOllama;
     function initializeTab3Vars() {
         promptConfigsContainerOllama = document.getElementById('prompt-configs-container-ollama');
         promoteTestBtnOllama = document.getElementById('promote-test-btn-ollama');
@@ -1502,6 +1577,7 @@ if ($pdo) {
             if (event.target == document.getElementById('queue-modal')) closeQueueModal();
             if (event.target == document.getElementById('image-viewer-modal')) closeImageViewerModal();
             if (event.target == document.getElementById('search-modal')) closeSearchModal();
+            if (event.target == document.getElementById('lightbox-overlay')) closeLightbox();
         };
         const urlParams = new URLSearchParams(window.location.search);
         let initialTab = urlParams.get('tab') || '<?php echo $active_tab; ?>';
