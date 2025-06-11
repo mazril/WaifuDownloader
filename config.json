@@ -75,6 +75,10 @@
         "ai_worker_loop_delay": {
             "value": 2,
             "description": "Opóźnienie (w sekundach) między kolejnymi cyklami sprawdzania zadań przez dedykowanego workera AI (testai_worker.py)."
+        },
+        "ai_title_wait_timeout": {
+            "value": 30,
+            "description": "Czas (s), przez który skrypt poczeka na odpowiedź AI z tytułem, zanim przejdzie do następnej galerii."
         }
     },
     "database": {
