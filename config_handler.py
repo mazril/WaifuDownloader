@@ -32,6 +32,7 @@ def get_default_config():
             "pause_between_max": {"value": 0.3, "description": "Maksymalna pauza (s) pomiędzy kolejnymi 'skokami' przewijania."},
             "jump_distance": {"value": 500, "description": "Odległość przewijania (px)."},
             "spinner_wait_time": {"value": 15.0, "description": "Max. czas (s) oczekiwania, gdy widoczny jest spinner ładowania."},
+            "max_spinner_timeouts": {"value": 3, "description": "Maksymalna liczba kolejnych timeoutów czekania na spinner, zanim skrypt zrezygnuje z dalszego przewijania i uzna, że strona się zatrzymała."},
             "refresh_jumps_main": {"value": 5, "description": "Skoki góra/dół przy odświeżaniu na stronie modelu."},
             "gallery_up_jumps": {"value": 5, "description": "Skoki w górę przy odświeżaniu w galerii."},
             "gallery_down_jumps": {"value": 3, "description": "Skoki w dół przy odświeżaniu w galerii."},

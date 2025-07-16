@@ -20,6 +20,10 @@
             "value": 10,
             "description": "Maksymalny czas (w sekundach), przez kt\u00f3ry skrypt b\u0119dzie czeka\u0142, je\u015bli na stronie pojawi si\u0119 widoczny wska\u017anik \u0142adowania (spinner)."
         },
+        "max_spinner_timeouts": {
+            "value": 3,
+            "description": "Maksymalna liczba kolejnych timeoutów czekania na spinner, zanim skrypt zrezygnuje z dalszego przewijania i uzna, że strona się zatrzymała."
+        },
         "refresh_jumps_main": {
             "value": 4,
             "description": "Liczba skok\u00f3w 'g\u00f3ra/d\u00f3\u0142' wykonywanych podczas od\u015bwie\u017cania pozycji na g\u0142\u00f3wnej stronie modelki, gdy skrypt uzna, \u017ce nic nowego si\u0119 nie \u0142aduje."
@@ -56,7 +60,7 @@
         },
         "max_consecutive_download_errors": {
             "value": 5,
-            "description": "Maksymalna liczba b\u0142\u0119d\u00f3w pobierania z rz\u0119du w pustej galerii, po kt\u00f3rej zostanie ona oznaczona jako wy\u0142\u0105czona."
+            "description": "Maksymalna liczba b\u0142\u0119d\u00f3w pobierania z rz\u0119du w pustej galerii, po kt\u0102\u00f3rej zostanie ona oznaczona jako wy\u0142\u0105czona."
         }
     },
     "pauses_and_rotation": {
@@ -120,7 +124,7 @@
         },
         "default_model_name": {
             "value": "llama3:8b-instruct-q4_K_M",
-            "description": "Domy\u015blny model j\u0119zykowy Ollama (np. 'llama3:latest'), kt\u00f3ry b\u0119dzie u\u017cywany, je\u015bli nie zostanie okre\u015blony inny w konfiguracji konkretnego promptu w bazie danych."
+            "description": "Domy\u015blny model j\u0119zykowy Ollama (np. 'llama3:latest'), kt\u00f3ry b\u0119dzie u\u017cywany, je\u015fli nie zostanie okre\u015blony inny w konfiguracji konkretnego promptu w bazie danych."
         }
     }
 }

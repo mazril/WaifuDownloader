@@ -408,6 +408,13 @@ def process_single_gallery(driver, model_name_original, gallery_url, gallery_id_
 
 
 def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None):
+    """
+    Obsługuje pojedynczy element z kolejki priorytetowej.
+    Opis modyfikacji:
+    - Dla typu `scan_model`, po wykonaniu skanowania strony modelki (`_scan_new_model_page`),
+      usunięto wywołanie pętli przetwarzającej galerie. To zadanie ma teraz tylko
+      skanować i aktualizować bazę danych. Główny cykl `main.py` zajmie się resztą.
+    """
     config_handler.load_config()
     item_type, payload = item.get("type"), item.get("payload")
     item_display_info = str(payload.get("id", str(payload))) if isinstance(payload, dict) else str(payload)
@@ -435,15 +442,15 @@ def handle_priority_item(item, driver_instance=None, shutdown_flag_func=None):
 
         if item_type == "scan_model":
             model_name_to_scan = str(payload)
-            status_msg = "Priorytet: Skanowanie i uzupełnianie modelu"
+            status_msg = "Priorytet: Skanowanie modelu"
             reporting.update_current_status(status_msg, model=model_name_to_scan, is_processing=True)
             _scan_new_model_page(driver_hpi, model_name_to_scan, shutdown_flag_func=shutdown_flag_func)
             
-            # Po skanie, od razu przetwarzamy znalezione galerie
-            galleries_to_process = db_manager.get_model_galleries_for_processing(db_manager.get_or_create_model(model_name_to_scan), "all_or_incomplete")
-            for gal in galleries_to_process:
-                if _is_shutdown_requested_processing(shutdown_flag_func): break
-                process_single_gallery(driver_hpi, model_name_to_scan, gal['url'], gal['gallery_id'], shutdown_flag_func=shutdown_flag_func)
+            # Usunięto: Pętla przetwarzająca galerie po skanowaniu
+            # galleries_to_process = db_manager.get_model_galleries_for_processing(db_manager.get_or_create_model(model_name_to_scan), "all_or_incomplete")
+            # for gal in galleries_to_process:
+            #     if _is_shutdown_requested_processing(shutdown_flag_func): break
+            #     process_single_gallery(driver_hpi, model_name_to_scan, gal['url'], gal['gallery_id'], shutdown_flag_func=shutdown_flag_func)
 
             reporting.update_current_status(f"Zakończono {status_msg} dla {model_name_to_scan}", model=model_name_to_scan, is_processing=False)
 

@@ -61,6 +61,7 @@ if ($pdo) {
                 Status Pobierania <small id="last-aggregate-update-time">(<?php echo htmlspecialchars($aggregate_last_modified_timestamp); ?>)</small>
                 <div class="main-controls">
                     <button id="refresh-empty-btn" class="btn-action" onclick="refreshAllEmptyDescriptions()" title="Dodaje wszystkie modelki do kolejki odświeżania opisów/liczników (dla galerii 0/0 lub ?/0)">Odśwież Puste Opisy</button>
+                    <button id="refresh-all-galleries-btn" class="btn-action" onclick="refreshAllGalleriesLists()" title="Dodaje wszystkie modelki do kolejki skanowania galerii. Najpierw puste modele, potem istniejące w poszukiwaniu nowych linków.">Odśwież Listę Galerii</button>
                     <button id="search-galleries-btn" class="btn-action" onclick="openSearchModal()">Szukaj Galerii</button>
                     <button id="manage-queue-btn" class="btn-action" onclick="openQueueModal()">
                         Zarządzaj Kolejką (<span id="queue-count">?</span>)
@@ -857,6 +858,23 @@ if ($pdo) {
             .then(data => {
                 if (data.success) {
                     showToast(data.message || 'Zadania odświeżania dodane do kolejki.');
+                    fetchAndDisplayQueue(); 
+                } else {
+                    showToast(`Błąd: ${data.message || 'Nie udało się dodać zadań.'}`, true);
+                }
+            })
+            .catch(error => {
+                showToast(`Błąd sieciowy: ${error.message}`, true);
+            });
+    }
+
+    function refreshAllGalleriesLists() {
+        showToast('Wysyłanie żądania odświeżenia list galerii dla wszystkich modeli (najpierw puste, potem istniejące)...');
+        fetch(`${API_URL_INDEX}?action=refresh_all_galleries_lists&_=${new Date().getTime()}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(data.message || 'Zadania odświeżania list galerii dodane do kolejki.');
                     fetchAndDisplayQueue(); 
                 } else {
                     showToast(`Błąd: ${data.message || 'Nie udało się dodać zadań.'}`, true);

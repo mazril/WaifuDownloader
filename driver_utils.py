@@ -321,6 +321,20 @@ def _is_element_in_viewport(driver, element, shutdown_flag_func=None):
 def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=True,
                          gallery_id=None, model_name=None, gallery_title=None,
                          shutdown_flag_func=None):
+    """
+    Przewija stronę w dół w poszukiwaniu elementów, z mechanizmem obsługi spinnera
+    i limitu kolejnych timeoutów.
+    Opis modyfikacji:
+    - Dodano licznik `consecutive_spinner_timeouts`.
+    - Jeśli spinner jest widoczny, a po oczekiwaniu nadal się nie załadował
+      (timeout oczekiwania na spinner), zwiększany jest `consecutive_spinner_timeouts`.
+    - Jeśli ten licznik przekroczy `max_spinner_timeouts` (z `config.json`),
+      pętla przewijania jest przerywana, aby uniknąć nieskończonego oczekiwania.
+    - Licznik jest resetowany, gdy spinner zniknie lub pojawią się nowe elementy.
+    Wpływ na inne funkcje:
+    - Zapewnia, że skrypt nie zablokuje się w pętli oczekiwania na spinner,
+      jeśli strona jest pusta lub zablokowana.
+    """
     config_handler.load_config()
     cfg = config_handler.current_config['scrolling']
     logger.info(f"SUT: Start dla '{selector}'. Oczekiwane: {expected_count or 'brak'}. Tytuł: '{gallery_title or 'N/A'}'")
@@ -334,6 +348,8 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
     refresh_count = 0
     ymal_consecutive_detections = 0
     scroll_counter = 0
+    consecutive_spinner_timeouts = 0 # Licznik kolejnych timeoutów spinnera
+    max_spinner_timeouts = config_handler.current_config['scrolling']['max_spinner_timeouts']['value'] # Limit z configu
 
     if gallery_id:
         reporting.update_current_status(
@@ -371,6 +387,7 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
                         logger.warning("SUT: 🍥 Wykryto spinner PONIŻEJ 'YOU MAY ALSO LIKE'. Wykonuję korektę w górę.")
                         driver.execute_script(f"window.scrollBy(0, -{effective_jump * 2});")
                         last_new_time = time.time()
+                        consecutive_spinner_timeouts = 0 # Resetuj, bo była korekta
                         continue
                 except (NoSuchElementException, Exception): pass
 
@@ -392,6 +409,13 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
 
                 if spinner_still_visible and not (shutdown_flag_func and shutdown_flag_func()):
                     logger.info(f"SUT:   🍥 Timeout ({spinner_wait}s) czekania na spinner. Kontynuuję mimo to.")
+                    consecutive_spinner_timeouts += 1 # Zwiększ licznik, jeśli był timeout
+                    logger.warning(f"SUT:   🍥 Kolejny timeout spinnera: {consecutive_spinner_timeouts}/{max_spinner_timeouts}")
+                    if consecutive_spinner_timeouts >= max_spinner_timeouts:
+                        logger.error(f"SUT:   🛑 Osiągnięto limit kolejnych timeoutów spinnera ({max_spinner_timeouts}). Przerywam przewijanie.")
+                        break # Przerwij pętlę przewijania, jeśli spinner ciągle się pojawia
+                else:
+                    consecutive_spinner_timeouts = 0 # Resetuj licznik, jeśli spinner zniknął
                 
                 last_new_time = time.time() # Resetuj czas oczekiwania po obsłudze spinnera
         except NoSuchElementException: pass 
@@ -444,6 +468,7 @@ def scroll_until_timeout(driver, selector, expected_count=None, allow_up_scroll=
             logger.info(f"SUT: ➕ Znaleziono {current_found - last_count_on_page} nowych (łącznie: {current_found}).")
             last_count_on_page = current_found; last_new_time = time.time(); elems = current_elems_list
             ymal_consecutive_detections = 0 
+            consecutive_spinner_timeouts = 0 # Resetuj, bo pojawiły się nowe elementy
             if gallery_id: reporting.update_current_status(message=f"Szukanie... ({current_found})", model=model_name, gallery=gallery_title, gallery_id=gallery_id, is_processing=True, scan_session_found_count=current_found)
 
         elapsed = time.time() - last_new_time
