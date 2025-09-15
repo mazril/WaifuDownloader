@@ -10,17 +10,16 @@ require_once 'php_utils.php';
 
 // --- NOWA SEKCJA: USTAWIENIA CACHE ---
 define('AGGREGATE_CACHE_DIR', __DIR__ . '/cache');
-define('AGGREGATE_CACHE_FILE', AGGREGATE_CACHE_DIR . '/aggregate_data.json');
-define('AGGREGATE_CACHE_TIME', 300); // Czas ważności cache w sekundach (5 minut)
+define('MODELS_CACHE_FILE', AGGREGATE_CACHE_DIR . '/models_list.json');
+define('MODELS_CACHE_TIME', 300); // Czas ważności cache w sekundach (5 minut)
 
 /**
- * Funkcja do czyszczenia pliku cache agregatu.
- * Zapewnia, że po każdej modyfikacji dane zostaną wygenerowane na nowo.
+ * Funkcja do czyszczenia pliku cache listy modeli.
  */
-function clear_aggregate_cache() {
-    if (file_exists(AGGREGATE_CACHE_FILE)) {
-        @unlink(AGGREGATE_CACHE_FILE);
-        api_log("Cache agregatu wyczyszczony.");
+function clear_models_cache() {
+    if (file_exists(MODELS_CACHE_FILE)) {
+        @unlink(MODELS_CACHE_FILE);
+        api_log("Cache listy modeli wyczyszczony.");
     }
 }
 // --- KONIEC SEKCJI CACHE ---
@@ -63,7 +62,7 @@ $raw_post_data = file_get_contents('php://input');
 if (
     ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($raw_post_data)) &&
     (
-        !in_array($action, ['get_status', 'get_aggregate', 'get_queue', 'clear_cache']) ||
+        !in_array($action, ['get_status', 'get_models_list', 'get_galleries_for_model', 'get_queue', 'clear_cache']) ||
         in_array($action, ['mark_gallery_completed', 'trigger_ai_test_run', 'trigger_ai_update', 'save_ai_prompt_config', 'rename_gallery_folder', 'update_queue', 'promote_test_to_production', 'save_global_ai_settings', 'toggle_gallery_disabled_status'])
     )
 ) {
@@ -75,7 +74,7 @@ if (
 
 switch ($action) {
     case 'clear_cache':
-        clear_aggregate_cache();
+        clear_models_cache();
         $response = ['success' => true, 'message' => 'Cache został wyczyszczony.'];
         break;
 
@@ -104,55 +103,93 @@ switch ($action) {
         $response = $queue_data; 
         break;
 
-    case 'get_aggregate':
-        if (file_exists(AGGREGATE_CACHE_FILE) && (time() - filemtime(AGGREGATE_CACHE_FILE) < AGGREGATE_CACHE_TIME)) {
-            api_log("Zwracam dane agregatu z cache.");
-            readfile(AGGREGATE_CACHE_FILE);
+    case 'get_models_list':
+        if (file_exists(MODELS_CACHE_FILE) && (time() - filemtime(MODELS_CACHE_FILE) < MODELS_CACHE_TIME)) {
+            api_log("Zwracam listę modeli z cache.");
+            readfile(MODELS_CACHE_FILE);
             exit();
         }
-        api_log("Generuję nowe dane agregatu (cache nie istnieje lub jest przestarzały).");
+        api_log("Generuję nową listę modeli (cache nie istnieje lub jest przestarzały).");
 
-        $aggregate_data = ['models' => []];
+        $models_data = [];
         try {
-            if (!$pdo) throw new Exception("Brak połączenia z bazą danych dla get_aggregate.");
-            $stmt_models = $pdo->query("SELECT model_id, model_name, sanitized_name FROM models ORDER BY model_name ASC");
-            $models_from_db = $stmt_models->fetchAll(PDO::FETCH_ASSOC);
+            if (!$pdo) throw new Exception("Brak połączenia z bazą danych dla get_models_list.");
 
-            foreach ($models_from_db as $model_row) {
-                $model_name_original = $model_row['model_name'];
-                $aggregate_data['models'][$model_name_original] = [
-                    'galleries' => [], 'sanitized_name' => $model_row['sanitized_name'],
-                    'total_galleries' => 0, 'completed_galleries' => 0, 'model_progress' => 0
+            $sql = "
+                SELECT 
+                    m.model_id, 
+                    m.model_name, 
+                    m.sanitized_name,
+                    COUNT(g.gallery_id) as total_galleries,
+                    SUM(CASE WHEN g.status IN ('completed', 'completed_with_tolerance') THEN 1 ELSE 0 END) as completed_galleries
+                FROM models m
+                LEFT JOIN galleries g ON m.model_id = g.model_id
+                GROUP BY m.model_id, m.model_name, m.sanitized_name
+                ORDER BY m.model_name ASC
+            ";
+            $stmt = $pdo->query($sql);
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($results as $row) {
+                $total = (int)$row['total_galleries'];
+                $completed = (int)$row['completed_galleries'];
+                $progress = ($total > 0) ? ($completed / $total * 100) : 0;
+
+                $models_data[] = [
+                    'model_name' => $row['model_name'],
+                    'sanitized_name' => $row['sanitized_name'],
+                    'total_galleries' => $total,
+                    'completed_galleries' => $completed,
+                    'model_progress' => $progress
                 ];
             }
             
-            $all_galleries_stmt = $pdo->query("
-                SELECT g.gallery_id, g.model_id, g.url, g.original_title, g.determined_title, 
+            $response = ['success' => true, 'models' => $models_data];
+
+            if (!is_dir(AGGREGATE_CACHE_DIR)) {
+                @mkdir(AGGREGATE_CACHE_DIR, 0775, true);
+            }
+            file_put_contents(MODELS_CACHE_FILE, json_encode($response), LOCK_EX);
+
+        } catch (PDOException $e) {
+            error_log("Błąd DB w get_models_list: " . $e->getMessage());
+            api_log("Błąd DB w get_models_list: " . $e->getMessage());
+            $response['message'] = 'Błąd pobierania listy modeli z bazy.';
+            http_response_code(500);
+        } catch (Exception $e) {
+            error_log("Ogólny błąd w get_models_list: " . $e->getMessage());
+            api_log("Ogólny błąd w get_models_list: " . $e->getMessage());
+            $response['message'] = 'Błąd serwera przy pobieraniu listy modeli.';
+            http_response_code(500);
+        }
+        break;
+
+    case 'get_galleries_for_model':
+        $model_name = $_GET['model_name'] ?? null;
+        if (!$model_name) {
+            $response['message'] = "Nie podano nazwy modelki.";
+            http_response_code(400);
+            break;
+        }
+
+        $galleries_data = [];
+        try {
+            if (!$pdo) throw new Exception("Brak połączenia z bazą danych dla get_galleries_for_model.");
+            
+            $stmt = $pdo->prepare("
+                SELECT g.gallery_id, g.url, g.original_title, g.determined_title, 
                        g.folder_path, g.expected_count, g.downloaded_count, g.status, g.is_disabled,
-                       m.model_name AS model_name_from_join, m.sanitized_name AS model_sanitized_name_from_join
+                       m.model_name, m.sanitized_name AS model_sanitized_name
                 FROM galleries g
                 JOIN models m ON g.model_id = m.model_id
-                ORDER BY m.model_name ASC, COALESCE(g.determined_title, g.original_title, g.gallery_id) ASC
+                WHERE m.model_name = :model_name
+                ORDER BY COALESCE(g.determined_title, g.original_title, g.gallery_id) ASC
             ");
-            $all_galleries = $all_galleries_stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->execute([':model_name' => $model_name]);
+            $galleries = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            foreach ($all_galleries as $gallery_row) {
-                $model_name_for_gallery = $gallery_row['model_name_from_join'];
-
-                if (!isset($aggregate_data['models'][$model_name_for_gallery])) {
-                    $sani_name = $gallery_row['model_sanitized_name_from_join'] ?: sanitize_foldername($model_name_for_gallery);
-                    $aggregate_data['models'][$model_name_for_gallery] = [
-                        'galleries' => [], 'sanitized_name' => $sani_name,
-                        'total_galleries' => 0, 'completed_galleries' => 0, 'model_progress' => 0
-                    ];
-                }
-
+            foreach ($galleries as $gallery_row) {
                 $is_complete_status = in_array($gallery_row['status'], ["completed", "completed_with_tolerance"]);
-                if ($is_complete_status) {
-                    $aggregate_data['models'][$model_name_for_gallery]['completed_galleries']++;
-                }
-                $aggregate_data['models'][$model_name_for_gallery]['total_galleries']++;
-
                 $expected = $gallery_row['expected_count'];
                 $downloaded = $gallery_row['downloaded_count'];
                 $status_color = $is_complete_status ? 'green' : ($downloaded > 0 ? 'orange' : 'red');
@@ -160,7 +197,7 @@ switch ($action) {
                 $thumbnails = [];
                 $web_path_segment = '';
                 if (!empty($gallery_row['folder_path']) && is_dir($gallery_row['folder_path'])) {
-                    $model_sanitized_name = $gallery_row['model_sanitized_name_from_join'];
+                    $model_sanitized_name = $gallery_row['model_sanitized_name'];
                     $gallery_folder_name_only = basename($gallery_row['folder_path']);
                     $web_path_segment = (defined('BASE_DATA_DIR_NAME') ? BASE_DATA_DIR_NAME : "Modelki") . '/' . $model_sanitized_name . '/' . $gallery_folder_name_only;
                     
@@ -184,42 +221,28 @@ switch ($action) {
                     }
                 }
 
-                $aggregate_data['models'][$model_name_for_gallery]['galleries'][$gallery_row['gallery_id']] = [
+                $galleries_data[$gallery_row['gallery_id']] = [
                     'title' => $gallery_row['determined_title'] ?: $gallery_row['original_title'] ?: $gallery_row['gallery_id'],
                     'folder' => $gallery_row['folder_path'],
                     'expected' => $expected, 'downloaded' => $downloaded, 'url' => $gallery_row['url'],
                     'status_color' => $status_color, 'completed' => $is_complete_status,
-                    'model_name' => $model_name_for_gallery, 'gallery_id' => $gallery_row['gallery_id'],
+                    'model_name' => $gallery_row['model_name'], 'gallery_id' => $gallery_row['gallery_id'],
                     'is_disabled' => (bool)$gallery_row['is_disabled'],
                     'thumbnails' => $thumbnails,
                     'web_path_segment' => $web_path_segment
                 ];
             }
-
-            foreach ($aggregate_data['models'] as $model_name_key => &$model_data_ref) {
-                if ($model_data_ref['total_galleries'] > 0) {
-                    $model_data_ref['model_progress'] = ($model_data_ref['completed_galleries'] / $model_data_ref['total_galleries'] * 100);
-                } else {
-                    $model_data_ref['model_progress'] = 0;
-                }
-            }
-            unset($model_data_ref); 
-            $response = ['success' => true, 'models' => $aggregate_data['models']];
-
-            if (!is_dir(AGGREGATE_CACHE_DIR)) {
-                @mkdir(AGGREGATE_CACHE_DIR, 0775, true);
-            }
-            file_put_contents(AGGREGATE_CACHE_FILE, json_encode($response), LOCK_EX);
-
+            $response = ['success' => true, 'galleries' => $galleries_data];
+        
         } catch (PDOException $e) {
-            error_log("Błąd DB w get_aggregate: " . $e->getMessage());
-            api_log("Błąd DB w get_aggregate: " . $e->getMessage());
-            $response['message'] = 'Błąd pobierania danych agregatu z bazy.';
+            error_log("Błąd DB w get_galleries_for_model: " . $e->getMessage());
+            api_log("Błąd DB w get_galleries_for_model: " . $e->getMessage());
+            $response['message'] = 'Błąd pobierania galerii dla modelki.';
             http_response_code(500);
         } catch (Exception $e) {
-            error_log("Ogólny błąd w get_aggregate: " . $e->getMessage());
-            api_log("Ogólny błąd w get_aggregate: " . $e->getMessage());
-            $response['message'] = 'Błąd serwera przy pobieraniu agregatu.';
+            error_log("Ogólny błąd w get_galleries_for_model: " . $e->getMessage());
+            api_log("Ogólny błąd w get_galleries_for_model: " . $e->getMessage());
+            $response['message'] = 'Błąd serwera przy pobieraniu galerii.';
             http_response_code(500);
         }
         break;
@@ -397,7 +420,7 @@ switch ($action) {
                 }
 
                 if ($response['success']) {
-                    clear_aggregate_cache();
+                    clear_models_cache();
                 }
 
             } catch (PDOException $e) {
@@ -459,7 +482,7 @@ switch ($action) {
                 $stmt_insert->execute([':model_name' => $model_name_param, ':sanitized_name' => $sanitized_name]);
                 if ($stmt_insert->rowCount() > 0) {
                     $response = ['success' => true, 'message' => "Modelka '$model_name_param' dodana do bazy danych."];
-                    clear_aggregate_cache();
+                    clear_models_cache();
                 } else {
                     $response['message'] = "Nie udało się dodać modelki '$model_name_param' do bazy danych.";
                      http_response_code(500);
@@ -658,7 +681,7 @@ switch ($action) {
             $message = "Dodano $added_count modeli do kolejki skanowania galerii (najpierw puste, potem istniejące).";
             if($skipped_count > 0) $message .= " Pominięto $skipped_count (prawdopodobnie już w kolejce).";
             $response = ['success' => true, 'message' => $message];
-            clear_aggregate_cache(); // Wyczyść cache, aby interfejs WWW mógł odświeżyć dane
+            clear_models_cache(); 
 
         } catch (PDOException $e) {
             error_log("Błąd DB w refresh_all_galleries_lists: " . $e->getMessage());
@@ -1131,7 +1154,7 @@ switch ($action) {
                     $pdo->commit();
                     $response = ['success' => true, 'message' => "Galeria '$gallery_id_mark' została oznaczona jako ukończona."];
                     api_log("Galeria '$gallery_id_mark' oznaczona jako ukończona przez użytkownika via API.");
-                    clear_aggregate_cache();
+                    clear_models_cache();
                 } else {
                     $pdo->rollBack();
                     $response['message'] = "Nie udało się zaktualizować statusu galerii '$gallery_id_mark'.";
@@ -1188,7 +1211,7 @@ switch ($action) {
                     'message' => 'Status galerii został zaktualizowany.',
                     'new_state_is_disabled' => $new_state
                 ];
-                clear_aggregate_cache();
+                clear_models_cache();
 
             } catch (PDOException $e) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
