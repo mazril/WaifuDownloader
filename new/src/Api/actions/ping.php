@@ -1,1 +1,1 @@
-<?php echo json_encode(['pong' => true, 'ts' => time(), 'action' => 'ping-file']);
+<?php echo json_encode(['pong'=>true,'ts'=>time(),'router'=>'v17-file']);
