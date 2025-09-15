@@ -1,31 +1,72 @@
 <?php
-declare(strict_types=1);
+// Bulletproof API router (v11): JSON-only + fatal error trap + built-in ping
+// No HTML output under any circumstance.
 
-// Force JSON-only output and trap PHP warnings/notices
-ini_set('display_errors', '0');
-error_reporting(E_ALL);
-set_error_handler(function ($severity, $message, $file, $line) {
-    if (!(error_reporting() & $severity)) return false;
-    throw new ErrorException($message, 0, $severity, $file, $line);
-});
-
-// Start clean output buffer to avoid stray HTML
-while (ob_get_level() > 0) { ob_end_clean(); }
-ob_start();
-
-// Common headers
+// Headers first
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
+// Pre-flight
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
     exit;
 }
 
-// Bootstrap (DB, utils, constants, etc.)
+// Environment
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
 $root = dirname(__DIR__);
+$logDir = $root . '/logs';
+if (!is_dir($logDir)) { @mkdir($logDir, 0777, true); }
+ini_set('error_log', $logDir . '/php_error.log');
+
+// Catch fatal errors (parse/compile/runtime fatals)
+register_shutdown_function(function() {
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        // Clean any buffered output
+        while (ob_get_level() > 0) { ob_end_clean(); }
+        http_response_code(500);
+        echo json_encode([
+            'error' => 'Fatal error',
+            'type' => $e['type'],
+            'message' => $e['message'],
+            'file' => $e['file'],
+            'line' => $e['line'],
+        ]);
+    }
+});
+
+// Turn warnings/notices into exceptions
+set_error_handler(function ($severity, $message, $file, $line) {
+    if (!(error_reporting() & $severity)) return false;
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+// Start clean buffer
+while (ob_get_level() > 0) { ob_end_clean(); }
+ob_start();
+
+$action = $_REQUEST['action'] ?? null;
+if (!$action) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Missing action parameter']);
+    exit;
+}
+
+$action = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $action);
+
+// Built-in actions (so test always works even bez pliku w actions/)
+if ($action === 'ping') {
+    echo json_encode(['pong' => true, 'ts' => time(), 'router' => 'v11']);
+    $out = ob_get_contents(); ob_end_clean(); echo $out; exit;
+}
+
+// Bootstrap
 $bootstrap = $root . '/src/Api/bootstrap.php';
 if (file_exists($bootstrap)) {
     require_once $bootstrap;
@@ -36,30 +77,20 @@ if (file_exists($bootstrap)) {
     }
 }
 
-// Resolve action
-$action = $_REQUEST['action'] ?? null;
-if (!$action) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Missing action parameter']);
-    exit;
-}
-
-$action = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $action);
+// Resolve action file
 $actionFile = $root . '/src/Api/actions/' . $action . '.php';
-
 if (!file_exists($actionFile)) {
     http_response_code(404);
     echo json_encode(['error' => 'Unknown action', 'action' => $action]);
-    exit;
+    $out = ob_get_contents(); ob_end_clean(); echo $out; exit;
 }
 
-// Execute action in current scope (has access to variables from bootstrap)
 try {
     require $actionFile;
     $out = ob_get_contents();
     ob_end_clean();
     if ($out === '' || $out === false) {
-        echo json_encode(['ok' => true]);
+        echo json_encode(['ok' => true, 'action' => $action]);
     } else {
         $trim = ltrim($out);
         $first = $trim === '' ? '' : $trim[0];

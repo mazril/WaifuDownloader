@@ -1,1 +1,1 @@
-<?php echo json_encode(['pong' => true, 'ts' => time()]);
+<?php echo json_encode(['pong' => true, 'ts' => time(), 'action' => 'ping-file']);
