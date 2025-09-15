@@ -29,6 +29,13 @@ if ($pdo) {
 }
 
 ?>
+<?php
+$root = dirname(__DIR__);
+if (file_exists($root . '/php_config.php')) require_once $root . '/php_config.php';
+if (file_exists($root . '/php_db_config.php')) require_once $root . '/php_db_config.php';
+if (file_exists($root . '/php_utils.php')) require_once $root . '/php_utils.php';
+?>
+
 <!DOCTYPE html>
 <html lang="pl">
 <head>
