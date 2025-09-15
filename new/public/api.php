@@ -59,19 +59,27 @@ if (!file_exists($actionFile)) {
 }
 
 // Execute action in current scope (has access to variables from bootstrap)
-try {
-    require $actionFile;
-    $out = ob_get_contents();
-    ob_end_clean();
-    // If action did not print anything, emit empty JSON
-    if ($out === '' || $out === false) {
-        echo json_encode(['ok' => true]);
-    } else {
-        // Trust action output but ensure it's JSON by not letting PHP notices leak before it
-        echo $out;
+
+    try {
+        require $actionFile;
+        $out = ob_get_contents();
+        ob_end_clean();
+        if ($out === '' || $out === false) {
+            echo json_encode(['ok' => true]);
+        } else {
+            // If output doesn't look like JSON, wrap it so frontend can still parse it
+            $trim = ltrim($out);
+            $first = $trim === '' ? '' : $trim[0];
+            if ($first !== '{' && $first !== '[') {
+                http_response_code(200);
+                echo json_encode(['error' => 'Non-JSON output', 'raw' => $out]);
+            } else {
+                echo $out;
+            }
+        }
+    } catch (Throwable $e) {
+        ob_end_clean();
+        http_response_code(500);
+        echo json_encode(['error' => 'Server error', 'message' => $e->getMessage()]);
     }
-} catch (Throwable $e) {
-    ob_end_clean();
-    http_response_code(500);
-    echo json_encode(['error' => 'Server error', 'message' => $e->getMessage()]);
-}
+
