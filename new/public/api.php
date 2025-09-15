@@ -1,6 +1,22 @@
 <?php
 declare(strict_types=1);
 
+// Force JSON-only output and trap PHP warnings/notices
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+
+// Convert warnings/notices to exceptions so we can return JSON
+set_error_handler(function ($severity, $message, $file, $line) {
+    if (!(error_reporting() & $severity)) return false;
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+// Start clean output buffer to avoid stray HTML
+while (ob_get_level() > 0) { ob_end_clean(); }
+ob_start();
+<?php
+declare(strict_types=1);
+
 // Common headers
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -43,4 +59,19 @@ if (!file_exists($actionFile)) {
 }
 
 // Execute action in current scope (has access to variables from bootstrap)
-require $actionFile;
+try {
+    require $actionFile;
+    $out = ob_get_contents();
+    ob_end_clean();
+    // If action did not print anything, emit empty JSON
+    if ($out === '' || $out === false) {
+        echo json_encode(['ok' => true]);
+    } else {
+        // Trust action output but ensure it's JSON by not letting PHP notices leak before it
+        echo $out;
+    }
+} catch (Throwable $e) {
+    ob_end_clean();
+    http_response_code(500);
+    echo json_encode(['error' => 'Server error', 'message' => $e->getMessage()]);
+}
