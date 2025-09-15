@@ -303,7 +303,7 @@ if ($pdo) {
     // --- JS for Tab 1: Status Galleries ---
     let statusTabInitialized = false;
     let statusPollingInterval = null;
-    let aggregateRefreshTimeout = null;
+    let modelsRefreshTimeout = null;
     let activeGalleryIdForUI = null;
     let activeModelNameSanitizedForUI = null;
     let currentlyViewedGalleryId = null;
@@ -337,7 +337,7 @@ if ($pdo) {
         }
         statusTabInitialized = true;
         startStatusPolling();
-        fetchAggregateDataAndUpdateModels(true);
+        fetchModelsList();
         fetchAndDisplayQueue();
     }
 
@@ -345,7 +345,7 @@ if ($pdo) {
         if (statusPollingInterval) clearInterval(statusPollingInterval);
         updateStatus();
         statusPollingInterval = setInterval(updateStatus, 2800);
-        setInterval(() => fetchAggregateDataAndUpdateModels(false), 25000);
+        setInterval(() => fetchModelsList(false), 25000);
         setInterval(fetchAndDisplayQueue, 30000);
     }
 
@@ -406,7 +406,7 @@ if ($pdo) {
                 statusSpan.textContent = '';
                 if (data.success) {
                     modelNameInput.value = '';
-                    fetchAggregateDataAndUpdateModels(true); 
+                    fetchModelsList(true); 
                 }
             })
             .catch(error => {
@@ -477,11 +477,11 @@ if ($pdo) {
                 const currentProcessingModelOriginal = data.current_model;
                 const currentProcessingModelSanitized = currentProcessingModelOriginal ? pySanitizeForQuerySelector(currentProcessingModelOriginal) : null;
                 if (modelSanitizedThatWasProcessing && modelSanitizedThatWasProcessing !== currentProcessingModelSanitized) {
-                    const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
+                    const oldModelLi = document.querySelector(`.model-li[data-model-sanitized-name="${modelSanitizedThatWasProcessing}"]`);
                     if (oldModelLi) oldModelLi.classList.remove('model-processing');
                 }
                 if (currentProcessingModelSanitized) {
-                    const currentModelLi = document.querySelector(`.model-li[data-model-name="${currentProcessingModelSanitized}"]`);
+                    const currentModelLi = document.querySelector(`.model-li[data-model-sanitized-name="${currentProcessingModelSanitized}"]`);
                     if (currentModelLi) {
                         currentModelLi.classList.remove('model-complete', 'model-partial'); 
                         currentModelLi.classList.add('model-processing');
@@ -498,13 +498,8 @@ if ($pdo) {
                     if (currentGalleryLi) {
                          currentGalleryLi.classList.add('processing');
                          const parentModelLi = currentGalleryLi.closest('li.model-li');
-                         if(parentModelLi){
-                             const nestedUl = parentModelLi.querySelector('ul.nested');
-                             const toggle = parentModelLi.querySelector('.toggle');
-                             if(nestedUl && !nestedUl.classList.contains('active')){
-                                 nestedUl.classList.add('active');
-                                 if(toggle) toggle.textContent = '−';
-                             }
+                         if(parentModelLi && !parentModelLi.classList.contains('active')){
+                            parentModelLi.querySelector('.toggle').click();
                          }
                     }
                     updateGalleryUI(activeGalleryIdForUI, data.current_download_count, data.current_expected_count, data.scan_session_found_count);
@@ -515,17 +510,19 @@ if ($pdo) {
                             }
                         }, 1000); 
                     }
-                } else if (!data.is_processing && galleryThatWasProcessing) { 
-                    const finishedGalleryLi = document.getElementById('gallery_li_' + galleryThatWasProcessing);
-                    if (finishedGalleryLi) finishedGalleryLi.classList.remove('processing');
-                    updateGalleryUI(galleryThatWasProcessing, data.current_download_count, data.current_expected_count, null);
-                    activeGalleryIdForUI = null; 
-                    triggerDelayedAggregateRefresh(); 
-                } else if (!data.is_processing && modelSanitizedThatWasProcessing && !currentProcessingModelSanitized) {
-                    const oldModelLi = document.querySelector(`.model-li[data-model-name="${modelSanitizedThatWasProcessing}"]`);
-                    if (oldModelLi) oldModelLi.classList.remove('model-processing');
+                } else if (!data.is_processing && (galleryThatWasProcessing || modelSanitizedThatWasProcessing)) { 
+                    if(galleryThatWasProcessing) {
+                        const finishedGalleryLi = document.getElementById('gallery_li_' + galleryThatWasProcessing);
+                        if (finishedGalleryLi) finishedGalleryLi.classList.remove('processing');
+                        updateGalleryUI(galleryThatWasProcessing, data.current_download_count, data.current_expected_count, null);
+                    }
+                     if (modelSanitizedThatWasProcessing) {
+                        const oldModelLi = document.querySelector(`.model-li[data-model-sanitized-name="${modelSanitizedThatWasProcessing}"]`);
+                        if (oldModelLi) oldModelLi.classList.remove('model-processing');
+                    }
+                    activeGalleryIdForUI = null;
                     activeModelNameSanitizedForUI = null;
-                    triggerDelayedAggregateRefresh();
+                    triggerDelayedModelsRefresh();
                 }
             })
             .catch(error => { 
@@ -536,162 +533,87 @@ if ($pdo) {
             }); 
     }
 
-    function triggerDelayedAggregateRefresh(delay = 2500) { 
-        if (aggregateRefreshTimeout) clearTimeout(aggregateRefreshTimeout);
-        aggregateRefreshTimeout = setTimeout(() => {
-            fetchAggregateDataAndUpdateModels(false); 
+    function triggerDelayedModelsRefresh(delay = 2500) { 
+        if (modelsRefreshTimeout) clearTimeout(modelsRefreshTimeout);
+        modelsRefreshTimeout = setTimeout(() => {
+            fetchModelsList(false); 
         }, delay);
     }
 
-    function fetchAggregateDataAndUpdateModels(forceFullRender = false) {
+    function fetchModelsList(forceFullRender = false) {
         if (!modelTreeUl) return;
-        fetch(`${API_URL_INDEX}?action=get_aggregate&_=${new Date().getTime()}`)
+        if(forceFullRender) modelTreeUl.innerHTML = '<li class="loader">Ładowanie listy modeli...</li>';
+        
+        fetch(`${API_URL_INDEX}?action=get_models_list&_=${new Date().getTime()}`)
             .then(response => response.json())
-            .then(aggregateData => {
-                if (aggregateData && aggregateData.models && typeof aggregateData.models === 'object') { 
-                    const modelsData = aggregateData.models;
-                    const modelNamesSorted = Object.keys(modelsData).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+            .then(data => {
+                if (data && data.success && Array.isArray(data.models)) {
                     if(forceFullRender) modelTreeUl.innerHTML = ''; 
-                    if (modelNamesSorted.length === 0 && forceFullRender) { 
-                         modelTreeUl.innerHTML = '<li>Brak modeli na liście lub w bazie danych.</li>';
-                         return; 
-                    } else if (forceFullRender && modelTreeUl.querySelector('.loader')) { 
-                         modelTreeUl.querySelector('.loader').remove();
+
+                    if (data.models.length === 0 && forceFullRender) {
+                        modelTreeUl.innerHTML = '<li>Brak modeli w bazie danych.</li>';
+                        return;
                     }
-                    modelNamesSorted.forEach(modelNameOriginal => {
-                        const modelData = modelsData[modelNameOriginal];
-                        if (typeof modelData !== 'object' || modelData === null) return; 
-                        const sanitizedModelName = modelData.sanitized_name || pySanitizeForQuerySelector(modelNameOriginal);
-                        let modelLiElement = document.querySelector(`.model-li[data-model-name="${sanitizedModelName}"]`);
-                        let nestedUl;
-                        if (!modelLiElement) { 
-                            modelLiElement = document.createElement('li');
-                            modelLiElement.className = 'model-li';
-                            modelLiElement.dataset.modelName = sanitizedModelName;
+
+                    data.models.forEach(modelData => {
+                        let modelLi = document.querySelector(`.model-li[data-model-name="${modelData.model_name}"]`);
+                        
+                        if (!modelLi) {
+                            modelLi = document.createElement('li');
+                            modelLi.className = 'model-li';
+                            modelLi.dataset.modelName = modelData.model_name;
+                            modelLi.dataset.modelSanitizedName = modelData.sanitized_name;
+
                             const modelHeader = document.createElement('div');
                             modelHeader.className = 'model-header';
-                            const escapedModelName = modelNameOriginal.replace(/'/g, "\\'");
+                            
+                            const escapedModelName = modelData.model_name.replace(/'/g, "\\'");
                             modelHeader.innerHTML = `
                                 <span class="toggle">+</span>
-                                <span class="model-name">${modelNameOriginal}</span>
+                                <span class="model-name"></span>
                                 <div class="progress-bar-container">
                                     <div class="progress-bar"></div>
                                 </div>
                                 <button class="btn-action" onclick="prioritizeItem('scan_model', '${escapedModelName}')" title="Skanuj, aktualizuj i dodaj brakujące galerie do kolejki pobierania">Uzupełnij Model</button>
                                 <button class="btn-action" onclick="prioritizeItem('scan_model_refresh_only', '${escapedModelName}')" title="Tylko skanuj i aktualizuj opisy/liczniki">Odśwież Opisy</button>
                             `;
-                            nestedUl = document.createElement('ul');
+                            
+                            const nestedUl = document.createElement('ul');
                             nestedUl.className = 'nested';
-                            modelLiElement.appendChild(modelHeader);
-                            modelLiElement.appendChild(nestedUl);
-                            const loaderLi = modelTreeUl.querySelector('.loader');
-                            if(loaderLi) modelTreeUl.insertBefore(modelLiElement, loaderLi);
-                            else modelTreeUl.appendChild(modelLiElement);
+                            
+                            modelLi.appendChild(modelHeader);
+                            modelLi.appendChild(nestedUl);
+                            modelTreeUl.appendChild(modelLi);
+                            
                             modelHeader.querySelector('.toggle').addEventListener('click', function() {
-                                nestedUl.classList.toggle('active');
-                                this.textContent = nestedUl.classList.contains('active') ? '−' : '+';
-                                if (nestedUl.classList.contains('active') && !nestedUl.dataset.galleriesLoadedOnce) { 
-                                    fetchAggregateDataAndUpdateModels(false); 
+                                const isActive = nestedUl.classList.toggle('active');
+                                this.textContent = isActive ? '−' : '+';
+                                if (isActive && !nestedUl.dataset.loaded) {
+                                    fetchGalleriesForModel(modelData.model_name, nestedUl);
                                 }
                             });
-                        } else {
-                            nestedUl = modelLiElement.querySelector('ul.nested');
                         }
-                        const completedInModel = modelData.completed_galleries || 0;
-                        const totalInModel = modelData.total_galleries || 0;
-                        const modelProgressPercent = modelData.model_progress || 0;
-                        modelLiElement.querySelector('.model-name').textContent = `${modelNameOriginal} (${completedInModel}/${totalInModel})`;
-                        const modelProgressBarDiv = modelLiElement.querySelector('.progress-bar');
-                        if (modelProgressBarDiv) { 
-                            modelProgressBarDiv.style.width = `${modelProgressPercent.toFixed(1)}%`;
-                            modelProgressBarDiv.textContent = `${modelProgressPercent.toFixed(0)}%`;
-                        }
-                        const progressBarContainer = modelLiElement.querySelector('.progress-bar-container');
-                        if(progressBarContainer) progressBarContainer.title = `${modelProgressPercent.toFixed(1)}% ukończonych galerii`;
-                        modelLiElement.classList.remove('model-complete', 'model-partial', 'model-processing');
-                        if (modelLiElement.dataset.modelName === activeModelNameSanitizedForUI) {
-                             modelLiElement.classList.add('model-processing');
-                        } else if (totalInModel > 0 && completedInModel === totalInModel) {
-                            modelLiElement.classList.add('model-complete');
-                        } else if (completedInModel > 0 || (totalInModel > 0 && completedInModel < totalInModel)) { 
-                            modelLiElement.classList.add('model-partial');
-                        }
-                        if (nestedUl && (nestedUl.classList.contains('active') || forceFullRender)) {
-                            if(forceFullRender || (nestedUl.classList.contains('active') && !nestedUl.dataset.galleriesLoadedOnce)) {
-                                nestedUl.innerHTML = ''; 
-                            }
-                            const galleriesFromServer = modelData.galleries || {};
-                            const galleryIdsSorted = Object.keys(galleriesFromServer).sort((a,b) => {
-                                const titleA = (galleriesFromServer[a] && galleriesFromServer[a].title) ? galleriesFromServer[a].title : a;
-                                const titleB = (galleriesFromServer[b] && galleriesFromServer[b].title) ? galleriesFromServer[b].title : b;
-                                return titleA.toLowerCase().localeCompare(titleB.toLowerCase());
-                            });
-                            galleryIdsSorted.forEach(galleryId => {
-                                const gData = galleriesFromServer[galleryId];
-                                if (typeof gData !== 'object' || gData === null) return;
-                                let galleryLi = document.getElementById('gallery_li_' + galleryId);
-                                const escapedGalleryIdForJS = galleryId.replace(/'/g, "\\'");
-                                const escapedGalleryTitleForJS = (gData.title || galleryId).replace(/'/g, "\\'");
-                                
-                                const isDisabled = gData.is_disabled || false;
-                                const disabledClass = isDisabled ? 'disabled' : '';
-                                const toggleBtnClass = isDisabled ? 'disabled' : 'enabled';
-                                const toggleBtnText = isDisabled ? 'Włącz' : 'Wyłącz';
 
-                                if (!galleryLi) {
-                                    galleryLi = document.createElement('li');
-                                    galleryLi.id = 'gallery_li_' + galleryId;
-                                    galleryLi.innerHTML = `
-                                        <div class="gallery-main-info">
-                                            <span class="gallery-link">
-                                                <span class="spinner"></span>
-                                                <a href="${gData.url || '#'}" target="_blank" title="Folder: ${gData.folder || 'Brak'}">${gData.title || galleryId}</a>
-                                            </span>
-                                            <div class="gallery-controls">
-                                                <span class="newly-found-count"></span>
-                                                <div class="progress-bar-container">
-                                                    <div class="progress-bar"></div>
-                                                </div>
-                                                <span class="gallery-status"></span>
-                                                <button class="btn-action btn-toggle-disabled ${toggleBtnClass}" onclick="toggleGalleryDisabledStatus('${escapedGalleryIdForJS}')">${toggleBtnText}</button>
-                                                <button class="btn-action btn-view-gallery" onclick="showGalleryFiles('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Pliki</button>
-                                                <button class="btn-action completed-action" onclick="markGalleryAsCompleted('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Ukończ</button>
-                                                <button class="btn-action" onclick="prioritizeItem('gallery', '${escapedGalleryIdForJS}')">Uzupełnij</button>
-                                                <a href="${gData.url || '#'}" target="_blank" class="btn-action">Źródło</a>
-                                            </div>
-                                        </div>
-                                        <div class="gallery-thumbnails" id="thumbnails-for-${galleryId}"></div>
-                                    `;
-                                    nestedUl.appendChild(galleryLi);
-                                }
-                                
-                                galleryLi.className = `gallery-li ${disabledClass}`;
-                                if (galleryId === activeGalleryIdForUI && statusDiv && statusDiv.style.backgroundColor.includes('e0f7fa')) { 
-                                     galleryLi.classList.add('processing');
-                                } else {
-                                     galleryLi.classList.remove('processing');
-                                }
-                                updateGalleryUI(galleryId, gData.downloaded, gData.expected, null, gData.title, gData.url, gData.folder);
+                        // Update existing model stats
+                        const modelNameSpan = modelLi.querySelector('.model-name');
+                        const modelProgressBar = modelLi.querySelector('.progress-bar');
+                        const modelProgressBarContainer = modelLi.querySelector('.progress-bar-container');
 
-                                // Renderowanie miniaturek
-                                const thumbnailsDiv = galleryLi.querySelector(`#thumbnails-for-${galleryId}`);
-                                if (thumbnailsDiv && gData.thumbnails && gData.thumbnails.length > 0 && thumbnailsDiv.childElementCount === 0) {
-                                    gData.thumbnails.forEach(filename => {
-                                        const img = document.createElement('img');
-                                        img.src = `${gData.web_path_segment}/${filename}`;
-                                        img.loading = 'lazy';
-                                        img.alt = filename;
-                                        img.title = filename;
-                                        img.addEventListener('click', () => showGalleryFiles(galleryId, escapedGalleryTitleForJS));
-                                        thumbnailsDiv.appendChild(img);
-                                    });
-                                }
-                            });
-                             nestedUl.dataset.galleriesLoadedOnce = "true"; 
+                        modelNameSpan.textContent = `${modelData.model_name} (${modelData.completed_galleries}/${modelData.total_galleries})`;
+                        modelProgressBar.style.width = `${modelData.model_progress.toFixed(1)}%`;
+                        modelProgressBar.textContent = `${modelData.model_progress.toFixed(0)}%`;
+                        modelProgressBarContainer.title = `${modelData.model_progress.toFixed(1)}% ukończonych galerii`;
+
+                        modelLi.classList.remove('model-complete', 'model-partial', 'model-processing');
+                        if (modelData.sanitized_name === activeModelNameSanitizedForUI) {
+                             modelLi.classList.add('model-processing');
+                        } else if (modelData.total_galleries > 0 && modelData.completed_galleries === modelData.total_galleries) {
+                            modelLi.classList.add('model-complete');
+                        } else if (modelData.completed_galleries > 0 || (modelData.total_galleries > 0 && modelData.completed_galleries < modelData.total_galleries)) { 
+                            modelLi.classList.add('model-partial');
                         }
                     });
-                    const loaderLiFinal = modelTreeUl.querySelector('.loader');
-                    if (loaderLiFinal) loaderLiFinal.remove();
+                    
                     const lastUpdateSpan = document.getElementById("last-aggregate-update-time");
                     if(lastUpdateSpan) lastUpdateSpan.textContent = `(Dane z DB: ${new Date().toLocaleTimeString()})`;
                 } else {
@@ -701,10 +623,96 @@ if ($pdo) {
             .catch(error => {
                  if(forceFullRender && modelTreeUl) modelTreeUl.innerHTML = '<li>Wystąpił błąd podczas ładowania danych modeli.</li>';
                  if (statusDiv) { 
-                    statusDiv.textContent = 'Błąd ładowania danych modeli: ' + error.message;
+                    statusDiv.textContent = 'Błąd ładowania listy modeli: ' + error.message;
                     statusDiv.style.backgroundColor = '#ffcdd2';
                  }
             });
+    }
+
+    function fetchGalleriesForModel(modelName, nestedUl) {
+        nestedUl.innerHTML = '<li class="loader">Ładowanie galerii...</li>';
+        fetch(`${API_URL_INDEX}?action=get_galleries_for_model&model_name=${encodeURIComponent(modelName)}&_=${new Date().getTime()}`)
+        .then(response => response.json())
+        .then(data => {
+            nestedUl.innerHTML = '';
+            if (data.success && data.galleries) {
+                const galleries = data.galleries;
+                 const galleryIdsSorted = Object.keys(galleries).sort((a,b) => {
+                    const titleA = (galleries[a] && galleries[a].title) ? galleries[a].title : a;
+                    const titleB = (galleries[b] && galleries[b].title) ? galleries[b].title : b;
+                    return titleA.toLowerCase().localeCompare(titleB.toLowerCase());
+                });
+
+                if (galleryIdsSorted.length === 0) {
+                     nestedUl.innerHTML = '<li>Brak galerii dla tej modelki.</li>';
+                }
+
+                galleryIdsSorted.forEach(galleryId => {
+                    const gData = galleries[galleryId];
+                    let galleryLi = document.getElementById('gallery_li_' + galleryId);
+                    if (galleryLi) galleryLi.remove(); // Remove old one if exists
+
+                    const escapedGalleryIdForJS = galleryId.replace(/'/g, "\\'");
+                    const escapedGalleryTitleForJS = (gData.title || galleryId).replace(/'/g, "\\'");
+                    
+                    const isDisabled = gData.is_disabled || false;
+                    const disabledClass = isDisabled ? 'disabled' : '';
+                    const toggleBtnClass = isDisabled ? 'disabled' : 'enabled';
+                    const toggleBtnText = isDisabled ? 'Włącz' : 'Wyłącz';
+
+                    galleryLi = document.createElement('li');
+                    galleryLi.id = 'gallery_li_' + galleryId;
+                    galleryLi.className = `gallery-li ${disabledClass}`;
+                    galleryLi.innerHTML = `
+                        <div class="gallery-main-info">
+                            <span class="gallery-link">
+                                <span class="spinner"></span>
+                                <a href="${gData.url || '#'}" target="_blank" title="Folder: ${gData.folder || 'Brak'}">${gData.title || galleryId}</a>
+                            </span>
+                            <div class="gallery-controls">
+                                <span class="newly-found-count"></span>
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar"></div>
+                                </div>
+                                <span class="gallery-status"></span>
+                                <button class="btn-action btn-toggle-disabled ${toggleBtnClass}" onclick="toggleGalleryDisabledStatus('${escapedGalleryIdForJS}')">${toggleBtnText}</button>
+                                <button class="btn-action btn-view-gallery" onclick="showGalleryFiles('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Pliki</button>
+                                <button class="btn-action completed-action" onclick="markGalleryAsCompleted('${escapedGalleryIdForJS}', '${escapedGalleryTitleForJS}')">Ukończ</button>
+                                <button class="btn-action" onclick="prioritizeItem('gallery', '${escapedGalleryIdForJS}')">Uzupełnij</button>
+                                <a href="${gData.url || '#'}" target="_blank" class="btn-action">Źródło</a>
+                            </div>
+                        </div>
+                        <div class="gallery-thumbnails" id="thumbnails-for-${galleryId}"></div>
+                    `;
+                    nestedUl.appendChild(galleryLi);
+
+                    if (galleryId === activeGalleryIdForUI && statusDiv.style.backgroundColor.includes('e0f7fa')) {
+                        galleryLi.classList.add('processing');
+                    }
+                    
+                    updateGalleryUI(galleryId, gData.downloaded, gData.expected, null, gData.title, gData.url, gData.folder);
+
+                    const thumbnailsDiv = galleryLi.querySelector(`#thumbnails-for-${galleryId}`);
+                    if (thumbnailsDiv && gData.thumbnails && gData.thumbnails.length > 0) {
+                        gData.thumbnails.forEach(filename => {
+                            const img = document.createElement('img');
+                            img.src = `${gData.web_path_segment}/${filename}`;
+                            img.loading = 'lazy';
+                            img.alt = filename;
+                            img.title = filename;
+                            img.addEventListener('click', () => showGalleryFiles(galleryId, escapedGalleryTitleForJS));
+                            thumbnailsDiv.appendChild(img);
+                        });
+                    }
+                });
+                nestedUl.dataset.loaded = "true";
+            } else {
+                nestedUl.innerHTML = '<li>Błąd ładowania galerii.</li>';
+            }
+        })
+        .catch(error => {
+            nestedUl.innerHTML = '<li>Błąd sieciowy podczas ładowania galerii.</li>';
+        });
     }
 
     function toggleGalleryDisabledStatus(galleryId) {
@@ -718,7 +726,15 @@ if ($pdo) {
         .then(data => {
             if (data.success) {
                 showGlobalToast(data.message || 'Status galerii zaktualizowany.');
-                fetchAggregateDataAndUpdateModels(false);
+                const galleryLi = document.getElementById(`gallery_li_${galleryId}`);
+                if(galleryLi) {
+                    const btn = galleryLi.querySelector('.btn-toggle-disabled');
+                    const isNowDisabled = data.new_state_is_disabled;
+                    galleryLi.classList.toggle('disabled', isNowDisabled);
+                    btn.classList.toggle('disabled', isNowDisabled);
+                    btn.classList.toggle('enabled', !isNowDisabled);
+                    btn.textContent = isNowDisabled ? 'Włącz' : 'Wyłącz';
+                }
             } else {
                 showGlobalToast(`Błąd: ${data.message || 'Nie udało się zaktualizować statusu.'}`, true);
             }
@@ -740,7 +756,13 @@ if ($pdo) {
         .then(data => {
             if (data.success) {
                 showToast(data.message || `Galeria "${galleryTitle}" oznaczona jako ukończona.`);
-                fetchAggregateDataAndUpdateModels(false);
+                triggerDelayedModelsRefresh(500);
+                 const galleryLi = document.getElementById('gallery_li_' + galleryId);
+                 if (galleryLi) {
+                    const statusSpan = galleryLi.querySelector('.gallery-status');
+                    statusSpan.textContent = 'D: Ukończona';
+                    statusSpan.className = 'gallery-status green';
+                 }
             } else {
                 showToast(`Błąd: ${data.message || 'Nie udało się oznaczyć galerii jako ukończonej.'}`, true);
             }
