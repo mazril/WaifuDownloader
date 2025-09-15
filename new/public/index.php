@@ -1,8 +1,9 @@
+<?php $root = dirname(__DIR__); ?>
 <?php
 // index.php
 
-require_once 'php_config.php'; 
-require_once 'php_utils.php';  
+require_once $root . '/php_config.php'; 
+require_once $root . '/php_utils.php';  
 
 // --- Global Initializations ---
 $pdo = get_db_connection();
