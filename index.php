@@ -497,11 +497,16 @@ if ($pdo) {
                     const currentGalleryLi = document.getElementById('gallery_li_' + activeGalleryIdForUI);
                     if (currentGalleryLi) {
                          currentGalleryLi.classList.add('processing');
-                         const parentModelLi = currentGalleryLi.closest('li.model-li');
-                         if(parentModelLi && !parentModelLi.classList.contains('active')){
-                            parentModelLi.querySelector('.toggle').click();
-                         }
-                    }
+const parentModelLi = currentGalleryLi.closest('li.model-li');
+if(parentModelLi && !parentModelLi.classList.contains('active')){
+    // Rozwiń tylko raz na początku przetwarzania modelu, nie przy każdym update
+    const wasAlreadyProcessing = parentModelLi.classList.contains('model-processing');
+    if (!wasAlreadyProcessing) {
+        parentModelLi.querySelector('.toggle').click();
+        // Dodaj flagę, że model został już rozwinięty dla tego cyklu
+        parentModelLi.setAttribute('data-auto-expanded', 'true');
+    }
+}
                     updateGalleryUI(activeGalleryIdForUI, data.current_download_count, data.current_expected_count, data.scan_session_found_count);
                     if (imageViewerModal && imageViewerModal.style.display === 'block' && currentlyViewedGalleryId === activeGalleryIdForUI) {
                         setTimeout(() => {
