@@ -1,4 +1,6 @@
 <?php $root = dirname(__DIR__); ?>
+<?php $root = dirname(__DIR__); $basePath = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\'); ?>
+
 <?php
 // index.php
 
@@ -50,6 +52,8 @@ if (file_exists($root . '/php_utils.php')) require_once $root . '/php_utils.php'
         .global-ai-settings label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; }
         .global-ai-settings input[type="text"] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; }
     </style>
+
+<link rel="stylesheet" href="<?=$basePath?>/assets/css/styles.css">
 </head>
 <body>
 
@@ -241,6 +245,6 @@ if (file_exists($root . '/php_utils.php')) require_once $root . '/php_utils.php'
 
 
 
-<script src="assets/js/app.js"></script>
+<script src="<?=$basePath?>/assets/js/app.js"></script>
 </body>
 </html>
