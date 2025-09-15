@@ -124,7 +124,7 @@
         },
         "default_model_name": {
             "value": "llama3:8b-instruct-q4_K_M",
-            "description": "Domy\u015blny model j\u0119zykowy Ollama (np. 'llama3:latest'), kt\u00f3ry b\u0119dzie u\u017cywany, je\u015fli nie zostanie okre\u015blony inny w konfiguracji konkretnego promptu w bazie danych."
+            "description": "Domy\u015blny model j\u0119zykowyy Ollama (np. 'llama3:latest'), kt\u00f3ry b\u0119dzie u\u017cywany, je\u015fli nie zostanie okre\u015blony inny w konfiguracji konkretnego promptu w bazie danych."
         }
     }
 }
