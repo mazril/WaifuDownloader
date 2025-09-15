@@ -20,6 +20,8 @@ ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 
 $root = dirname(__DIR__);
+require_once $root . '/src/Api/lib/log.php';
+
 $logDir = $root . '/logs';
 if (!is_dir($logDir)) { @mkdir($logDir, 0777, true); }
 ini_set('error_log', $logDir . '/php_error.log');
@@ -81,6 +83,7 @@ if (file_exists($bootstrap)) {
 $actionFile = $root . '/src/Api/actions/' . $action . '.php';
 if (!file_exists($actionFile)) {
     http_response_code(404);
+    api_log('error', 'Unknown action', ['action'=>$action]);
     echo json_encode(['error' => 'Unknown action', 'action' => $action]);
     $out = ob_get_contents(); ob_end_clean(); echo $out; exit;
 }
@@ -104,5 +107,6 @@ try {
 } catch (Throwable $e) {
     ob_end_clean();
     http_response_code(500);
+    api_log('error', 'Exception in action', ['action'=>$action, 'error'=>$e->getMessage()]);
     echo json_encode(['error' => 'Server error', 'message' => $e->getMessage(), 'action' => $action]);
 }

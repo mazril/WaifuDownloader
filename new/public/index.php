@@ -245,6 +245,7 @@ if (file_exists($root . '/php_utils.php')) require_once $root . '/php_utils.php'
 
 
 
+<script src="<?=$basePath?>/assets/js/runtime.js"></script>
 <script src="<?=$basePath?>/assets/js/app.js"></script>
 </body>
 </html>
